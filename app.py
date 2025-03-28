@@ -2,339 +2,327 @@ import streamlit as st
 import os
 import tempfile
 import openai
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
-from langchain_text_splitters import MarkdownHeaderTextSplitter
-import chromadb
-import base64
-
-# Try to import MarkItDown, with fallback instructions
-try:
-    from markitdown import MarkItDown
-except ImportError:
-    st.error("Please install markitdown with: pip install 'markitdown[all]~=0.1.0a1'")
+import json
+import io
+import PyPDF2
 
 # Set page configuration
 st.set_page_config(
-    page_title="Enhancing Intelligence",
-    page_icon="📚",
+    page_title="Professional Learning Platform",
+    page_icon="💼",
     layout="wide"
 )
 
-# Initialize session state variables
-if 'pdf_uploaded' not in st.session_state:
-    st.session_state.pdf_uploaded = False
-if 'vector_store' not in st.session_state:
-    st.session_state.vector_store = None
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = []
-if 'recent_queries' not in st.session_state:
-    st.session_state.recent_queries = []  # Changed from set to list to maintain order
+# Initialize session state
+if 'course_generated' not in st.session_state:
+    st.session_state.course_generated = False
+if 'course_content' not in st.session_state:
+    st.session_state.course_content = None
+if 'current_module' not in st.session_state:
+    st.session_state.current_module = 0
+if 'quiz_results' not in st.session_state:
+    st.session_state.quiz_results = {}
+if 'query_history' not in st.session_state:
+    st.session_state.query_history = []
 
-# App title and description
-st.title("📚 Enhancing Intelligence! Adaptive AI using RAG")
-st.markdown("Upload a PDF document and ask questions about its content.")
+def extract_pdf_text(pdf_path):
+    """
+    Extract text from PDF document using PyPDF2
+    """
+    with open(pdf_path, 'rb') as file:
+        reader = PyPDF2.PdfReader(file)
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() + "\n\n"
+    return text
 
-# Sidebar for API configuration and file upload
-with st.sidebar:
-    st.header("Configuration")
+def generate_professional_course(document_text, professional_context):
+    """
+    Generate a professional development course
+    """
+    # Truncate text to prevent extremely long inputs
+    truncated_text = document_text[:3000]
     
-    # API Key input
-    api_key = st.text_input("OpenAI API Key", type="password", 
-                           placeholder="Enter your OpenAI API Key")
-    
-    if api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
-        openai.api_key = api_key
-    
-    # Model selection
-    model_option = st.selectbox(
-        "Select OpenAI Model",
-        ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
-        index=0
-    )
-    
-    # File uploader
-    st.header("Upload Document")
-    uploaded_file = st.file_uploader("Choose a PDF file", type=['pdf'])
-    
-    if uploaded_file is not None and not st.session_state.pdf_uploaded:
-        st.info("Processing PDF... Please wait.")
-        
-        # Create persistent ChromaDB client
-        db_dir = os.path.join(tempfile.gettempdir(), "chroma_db")
-        os.makedirs(db_dir, exist_ok=True)
-        client = chromadb.PersistentClient(path=db_dir)
-        
-        # Use a unique collection name for each upload
-        collection_name = f"training_materials_{id(uploaded_file)}"
-        collection = client.get_or_create_collection(name=collection_name)
-        
-        # Save the uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-            tmp_file.write(uploaded_file.getvalue())
-            pdf_path = tmp_file.name
-        
-        try:
-            # Convert PDF to markdown
-            md = MarkItDown()
-            result = md.convert(pdf_path)
-            
-            if not result.text_content:
-                st.error("Failed to extract text from the PDF.")
-                st.stop()
-            
-            # Split markdown by headers
-            headers_to_split_on = [
-                ("#", "Header 1"),
-                ("##", "Header 2"),
-                ("###", "Header 3"),
-            ]
-            markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
-            md_header_splits = markdown_splitter.split_text(result.text_content)
-            
-            # Create embeddings and vector store
-            try:
-                embeddings = OpenAIEmbeddings()
-                st.session_state.vector_store = Chroma.from_documents(
-                    documents=md_header_splits, 
-                    embedding=embeddings, 
-                    collection_name=collection_name,
-                    persist_directory=db_dir
-                )
-                st.session_state.pdf_uploaded = True
-                st.success("PDF processed successfully!")
-                
-            except Exception as e:
-                st.error(f"Error creating embeddings: {str(e)}")
-        
-        except Exception as e:
-            st.error(f"Error processing PDF: {str(e)}")
-        
-        # Clean up temporary file
-        os.unlink(pdf_path)
-        
-    # Document info once processed
-    if st.session_state.pdf_uploaded:
-        st.success(f"✅ Document ready for queries")
-        
-        # Add reset button
-        if st.button("Reset Document"):
-            # Clean up ChromaDB
-            if st.session_state.vector_store:
-                try:
-                    st.session_state.vector_store._collection.delete()
-                except:
-                    pass  # Ignore deletion errors
-                
-            st.session_state.pdf_uploaded = False
-            st.session_state.vector_store = None
-            st.session_state.chat_history = []
-            st.session_state.recent_queries = []
-            st.rerun()
+    prompt = f"""
+    Create a professional development course based on the following document:
 
-# Main content area
-if not api_key:
-    st.warning("Please enter your OpenAI API Key in the sidebar to continue.")
-    
-elif not st.session_state.pdf_uploaded:
-    st.info("Please upload a PDF document in the sidebar to get started.")
-    
-else:
-    # Function to get relevant text for a query
-    def get_relevant_text(query):
-        # Fixed similarity threshold value
-        similarity_threshold = 0.7
-        
-        results = st.session_state.vector_store.similarity_search_with_score(
-            query, 
-            k=3  # Increased to get more potential matches
+    Professional Context:
+    {professional_context}
+
+    Document Content:
+    {truncated_text}
+
+    Course Requirements:
+    1. Design a course with 3-4 professional modules
+    2. Focus on practical workplace applications
+    3. Include learning objectives for each module
+    4. Create scenario-based learning content
+    5. Develop multiple-choice quizzes to assess understanding
+
+    Output Format (Strict JSON):
+    {{
+        "course_title": "Professional Development Course",
+        "course_description": "Practical skills for professional growth",
+        "modules": [
+            {{
+                "module_number": 1,
+                "title": "Module Title",
+                "learning_objectives": ["Objective 1", "Objective 2"],
+                "content": "Detailed module content with professional insights",
+                "workplace_scenarios": ["Scenario 1", "Scenario 2"],
+                "quiz": {{
+                    "questions": [
+                        {{
+                            "question": "Quiz question",
+                            "options": ["Option A", "Option B", "Option C", "Option D"],
+                            "correct_answer": "Correct Option"
+                        }}
+                    ]
+                }}
+            }}
+        ]
+    }}
+    """
+
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are an expert instructional designer creating professional development courses."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.6
         )
         
-        # Filter results by similarity score if needed
-        filtered_results = [doc for doc, score in results if score <= similarity_threshold]
+        return json.loads(response.choices[0].message.content)
+    except Exception as e:
+        st.error(f"Course generation error: {e}")
+        return None
+
+def generate_course_query_response(course_content, query):
+    """
+    Generate a response to user's query based on course content
+    """
+    # Prepare course context
+    course_context = json.dumps(course_content, indent=2)
+    
+    prompt = f"""
+    You are an expert course instructor. 
+    Course Content: {course_context}
+
+    User Query: {query}
+
+    Provide a comprehensive and professional response to the query based on the course content. 
+    If the query cannot be directly answered from the course content, provide a helpful, 
+    professionally-worded explanation.
+
+    Response Guidelines:
+    - Be precise and informative
+    - Use professional language
+    - If the answer is not in the course content, explain why
+    - Offer additional context or guidance if possible
+    """
+
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are an expert course instructor providing detailed, professional answers."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=300,
+            temperature=0.7
+        )
         
-        # If no results meet the threshold, return top result anyway
-        if not filtered_results and results:
-            filtered_results = [results[0][0]]
-            
-        # Remove duplicates by content
-        unique_contents = set()
-        unique_results = []
-        
-        for doc in filtered_results:
-            content = doc.page_content.strip()
-            if content not in unique_contents:
-                unique_contents.add(content)
-                unique_results.append(doc)
-        
-        return "\n\n".join([doc.page_content for doc in unique_results])
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Error generating response: {e}"
 
-    # Check if a query is similar to recent queries
-    def is_similar_to_recent(query, threshold=3):
-        # Simple check for very similar questions
-        query_lower = query.lower().strip()
-        for recent_query in st.session_state.recent_queries:
-            if query_lower == recent_query.lower().strip():
-                return True
-            
-            # Check for similarity based on word overlap
-            query_words = set(query_lower.split())
-            recent_words = set(recent_query.lower().split())
-            common_words = query_words.intersection(recent_words)
-            
-            # If there's significant overlap and the query is similar in length
-            if (len(common_words) >= threshold and 
-                abs(len(query_words) - len(recent_words)) <= 2):
-                return True
-        
-        return False
-
-    # Function to generate a response
-    def generate_response(query):
-        # Check if this is a repeated query
-        if is_similar_to_recent(query):
-            return "You've asked a similar question recently. To avoid redundant answers, please try a different question or rephrase your query."
-        
-        # Add normalized query to recent queries list
-        st.session_state.recent_queries.append(query)
-        if len(st.session_state.recent_queries) > 5:  # Keep only recent 5 queries
-            st.session_state.recent_queries.pop(0)  # Remove oldest query
-            
-        with st.spinner("Searching for relevant information..."):
-            context = get_relevant_text(query)  # Retrieve relevant content
-
-        if not context.strip():  # If no relevant data found, deny response
-            return "I can only answer questions based on the uploaded training material."
-
-        full_prompt = f"""
-        Answer the following question **only using** the provided training material.
-        If the answer is not found, reply with: 'I can only answer questions based on the uploaded training material.'
-        Provide a concise answer without repeating information.
-
-        Training Material:
-        {context}
-
-        Question: {query}
-        """
-
-        with st.spinner("Generating response..."):
-            response = openai.chat.completions.create(
-                model=model_option,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that provides concise, non-repetitive answers based only on the provided material."},
-                    {"role": "user", "content": full_prompt}
-                ],
-                temperature=0.3  # Lower temperature for more consistent responses
+def display_course_module(module, module_index):
+    """
+    Display a single course module with interactive elements
+    """
+    st.subheader(f"Module {module_index + 1}: {module['title']}")
+    
+    # Learning Objectives
+    st.markdown("**Learning Objectives:**")
+    for obj in module['learning_objectives']:
+        st.markdown(f"- {obj}")
+    
+    # Module Content
+    st.markdown("**Module Content:**")
+    st.write(module['content'])
+    
+    # Workplace Scenarios
+    st.markdown("**Workplace Scenarios:**")
+    for scenario in module['workplace_scenarios']:
+        st.markdown(f"🏢 {scenario}")
+    
+    # Quiz Section
+    st.markdown("**Module Quiz:**")
+    with st.form(key=f"quiz_form_{module_index}"):
+        quiz_results = {}
+        for q_idx, question in enumerate(module['quiz']['questions']):
+            quiz_results[q_idx] = st.radio(
+                question['question'], 
+                question['options'],
+                key=f"quiz_{module_index}_{q_idx}"
             )
-
-        return response.choices[0].message.content
-    
-    # Chat interface
-    st.header("Ask about your document")
-    
-    # Add clear chat button
-    if st.button("Clear Chat History"):
-        st.session_state.chat_history = []
-        st.session_state.recent_queries = []
-        st.rerun()
-    
-    # Display chat history
-    for i, (q, a) in enumerate(st.session_state.chat_history):
-        # Use columns for better display
-        message_container = st.container()
-        with message_container:
-            col1, col2 = st.columns([1, 9])
-            with col1:
-                st.markdown("🧑")
-            with col2:
-                st.info(q)
-                
-            col1, col2 = st.columns([1, 9])
-            with col1:
-                st.markdown("🤖")
-            with col2:
-                st.success(a)
-    
-    # User input for new question with a form to prevent auto-rerun issues
-    with st.form(key="question_form"):
-        user_question = st.text_input("Ask a question about your PDF", key="user_question")
-        submit_button = st.form_submit_button("Submit Question")
-    
-    # Process the question when submitted through the form
-    if submit_button and user_question:
-        # Add user question to chat history
-        answer = generate_response(user_question)
-        st.session_state.chat_history.append((user_question, answer))
         
-        # Clear the input field by rerunning
-        st.rerun()
-    
-    # Advanced features section
-    with st.expander("Advanced Features"):
-        st.subheader("Get Detailed Answer")
+        submit_quiz = st.form_submit_button("Submit Quiz")
         
-        with st.form(key="detailed_form"):
-            detailed_question = st.text_area("Ask for a comprehensive explanation")
-            generate_detailed = st.form_submit_button("Generate Detailed Response")
-        
-        if generate_detailed:
-            if not detailed_question:
-                st.warning("Please enter a question first.")
+        if submit_quiz:
+            # Evaluate Quiz
+            score = 0
+            total_questions = len(module['quiz']['questions'])
+            
+            for q_idx, question in enumerate(module['quiz']['questions']):
+                if quiz_results.get(q_idx) == question['correct_answer']:
+                    score += 1
+            
+            # Store and display results
+            pass_percentage = (score / total_questions) * 100
+            st.session_state.quiz_results[module_index] = {
+                'score': score,
+                'total': total_questions,
+                'percentage': pass_percentage
+            }
+            
+            if pass_percentage >= 70:
+                st.success(f"Great job! You scored {score}/{total_questions} ({pass_percentage:.1f}%)")
             else:
-                with st.spinner("Generating detailed response..."):
-                    try:
-                        # Function to get detailed answer
-                        def get_detailed_answer(query, model=model_option, max_tokens=4000):
-                            # Check if similar to recent queries
-                            if is_similar_to_recent(query):
-                                return "You've asked a similar question recently. To avoid redundant answers, please try a different question or rephrase your query."
-                            
-                            # Add to recent queries
-                            st.session_state.recent_queries.append(query)
-                            if len(st.session_state.recent_queries) > 5:
-                                st.session_state.recent_queries.pop(0)
-                                
-                            context = get_relevant_text(query)
-                            
-                            full_prompt = f"""
-                            Answer the following question with a comprehensive, detailed response based on the provided training material.
-                            Include examples, explanations, and extensive information when possible.
-                            If the answer is not found in the material, acknowledge that limitation.
-                            Avoid repeating the same information multiple times.
-                            
-                            Training Material:
-                            {context}
-                            
-                            Question: {query}
-                            """
-                            
-                            response = openai.chat.completions.create(
-                                model=model,
-                                messages=[
-                                    {"role": "system", "content": "You are a helpful assistant that provides comprehensive, detailed answers without repetition."},
-                                    {"role": "user", "content": full_prompt}
-                                ],
-                                max_tokens=max_tokens,
-                                temperature=0.3
-                            )
-                            
-                            return response.choices[0].message.content
-                        
-                        detailed_answer = get_detailed_answer(detailed_question)
-                        
-                        # Create a dedicated response container
-                        detailed_container = st.container()
-                        with detailed_container:
-                            st.markdown("### Detailed Answer")
-                            st.write(detailed_answer)
-                            
-                            # Add this to chat history too (optional)
-                            st.session_state.chat_history.append((f"[Detailed] {detailed_question}", detailed_answer))
-                        
-                    except Exception as e:
-                        st.error(f"Error generating detailed response: {str(e)}")
+                st.warning(f"You scored {score}/{total_questions} ({pass_percentage:.1f}%). Review the material and try again.")
 
-# Footer
-st.divider()
-st.markdown("*This application uses OpenAI's APIs to analyze and answer questions about your documents.*")
+def add_query_section(course_content):
+    """
+    Add an interactive query section to the Streamlit app
+    """
+    st.sidebar.header("Course Queries")
+    
+    # Query input
+    user_query = st.sidebar.text_area("Ask a Question about the Course", height=100)
+    
+    if st.sidebar.button("Get Answer"):
+        if user_query.strip():
+            # Generate response
+            query_response = generate_course_query_response(course_content, user_query)
+            
+            # Store query in history
+            st.session_state.query_history.append({
+                'query': user_query,
+                'response': query_response
+            })
+    
+    # Display query history
+    if st.session_state.query_history:
+        st.sidebar.header("Query History")
+        for query_item in reversed(st.session_state.query_history):
+            with st.sidebar.expander(f"Q: {query_item['query'][:50]}..."):
+                st.markdown("**Question:**")
+                st.write(query_item['query'])
+                st.markdown("**Answer:**")
+                st.write(query_item['response'])
+
+def main():
+    st.title("💼 Professional Learning Platform")
+    
+    # Sidebar for configuration
+    with st.sidebar:
+        st.header("Course Setup")
+        
+        # OpenAI API Key
+        openai_api_key = st.text_input("OpenAI API Key", type="password")
+        
+        # Professional Context
+        professional_role = st.selectbox(
+            "Your Professional Role",
+            [
+                "Manager", 
+                "Individual Contributor", 
+                "Executive", 
+                "Team Leader", 
+                "Specialist"
+            ]
+        )
+        
+        learning_focus = st.multiselect(
+            "Learning Focus Areas",
+            [
+                "Leadership Skills",
+                "Communication",
+                "Technical Skills",
+                "Project Management",
+                "Personal Development"
+            ]
+        )
+        
+        # PDF Upload
+        uploaded_file = st.file_uploader("Upload Training PDF", type=['pdf'])
+        
+        # Generate Course Button
+        if uploaded_file and openai_api_key:
+            if st.button("Generate Professional Course"):
+                # Set API Key
+                openai.api_key = openai_api_key
+                
+                # Save temporary PDF
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                    tmp_file.write(uploaded_file.getvalue())
+                    pdf_path = tmp_file.name
+                
+                try:
+                    # Extract PDF text
+                    pdf_text = extract_pdf_text(pdf_path)
+                    
+                    # Prepare professional context
+                    professional_context = f"""
+                    Professional Role: {professional_role}
+                    Learning Focus: {', '.join(learning_focus)}
+                    """
+                    
+                    # Generate Course
+                    course_content = generate_professional_course(pdf_text, professional_context)
+                    
+                    if course_content:
+                        st.session_state.course_content = course_content
+                        st.session_state.course_generated = True
+                        st.session_state.current_module = 0
+                        st.session_state.query_history = []  # Reset query history
+                        st.success("Professional Course Generated Successfully!")
+                
+                except Exception as e:
+                    st.error(f"Course generation error: {e}")
+                
+                # Clean up temporary file
+                os.unlink(pdf_path)
+    
+    # Course Display
+    if st.session_state.course_generated:
+        course = st.session_state.course_content
+        
+        st.header(course['course_title'])
+        st.write(course['course_description'])
+        
+        # Add Query Section
+        add_query_section(course)
+        
+        # Module Navigation
+        module_tabs = st.tabs([f"Module {m+1}" for m in range(len(course['modules']))])
+        
+        for i, tab in enumerate(module_tabs):
+            with tab:
+                display_course_module(course['modules'][i], i)
+        
+        # Overall Course Progress
+        st.subheader("Course Progress")
+        progress_container = st.container()
+        with progress_container:
+            for module_idx, results in st.session_state.quiz_results.items():
+                st.metric(
+                    f"Module {module_idx + 1}", 
+                    f"{results['score']}/{results['total']} ({results['percentage']:.1f}%)"
+                )
+
+if __name__ == "__main__":
+    main()
