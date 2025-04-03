@@ -3,9 +3,10 @@ import os
 import tempfile
 import json
 import io
-import PyPDF2
+import markdown_it
 import requests
-from openai import OpenAI  # New import format
+from openai import OpenAI
+import PyPDF2  # Add this library for PDF processing
 
 # Page Configuration
 st.set_page_config(page_title="📚 Professional Learning Platform", layout="wide")
@@ -16,16 +17,11 @@ st.sidebar.title("🎓 Professional Learning Setup")
 # OpenAI API Key
 openai_api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
 
-# Model selection - adding this for flexibility
-model_options = ["gpt-3.5-turbo-0125", "gpt-4", "gpt-4-turbo-preview"]
-selected_model = st.sidebar.selectbox("Select OpenAI Model", model_options, index=0)
+# Model selection - only GPT-4o-mini
+selected_model = "gpt-4o-mini"
 
-# User's Professional Context
-role = st.sidebar.selectbox("💼 Your Professional Role", ["Manager", "Engineer", "Executive", "Team Leader", "Specialist"])
-learning_focus = st.sidebar.multiselect("📚 Learning Focus", ["Leadership", "Communication", "Tech Skills", "Project Management", "Personal Growth"])
-
-# File Uploader
-uploaded_file = st.sidebar.file_uploader("📝 Upload Training PDF", type=['pdf'])
+# File Uploader - now including PDF files
+uploaded_file = st.sidebar.file_uploader("📝 Upload Training Document", type=['txt', 'md', 'pdf'])
 
 # Initialize session state
 if 'course_content' not in st.session_state:
@@ -41,16 +37,30 @@ if 'extracted_text' not in st.session_state:
 if 'employer_queries' not in st.session_state:
     st.session_state.employer_queries = []
 
-# Extract PDF Text Function
-def extract_pdf_text(pdf_file):
+# Extract Text Function - Modified to handle PDFs
+def extract_text(file):
     try:
         # Reset file pointer to beginning
-        pdf_file.seek(0)
-        reader = PyPDF2.PdfReader(pdf_file)
-        text = "".join(page.extract_text() or "" for page in reader.pages)
-        return text
+        file.seek(0)
+        
+        # Get file name and extension
+        file_name = file.name.lower() if hasattr(file, 'name') else ''
+        
+        # Handle different file types
+        if file_name.endswith('.pdf'):
+            # Process PDF file
+            pdf_reader = PyPDF2.PdfReader(file)
+            text = ""
+            for page_num in range(len(pdf_reader.pages)):
+                page = pdf_reader.pages[page_num]
+                text += page.extract_text() + "\n\n"
+            return text
+        else:
+            # Process text or markdown file
+            text = file.read().decode('utf-8')
+            return text
     except Exception as e:
-        st.error(f"Error extracting PDF text: {e}")
+        st.error(f"Error extracting text: {e}")
         return ""
 
 # RAG Function to generate answer from document content
@@ -107,7 +117,7 @@ def generate_rag_answer(question, document_text, course_content=None):
 
 # Employer Queries Section in Sidebar
 st.sidebar.markdown("---")
-st.sidebar.subheader("💬 Employer Queries")
+st.sidebar.subheader("💬 Questions")
 
 new_query = st.sidebar.text_area("Add a new question:", height=100)
 if st.sidebar.button("Submit Question"):
@@ -128,7 +138,7 @@ if st.sidebar.button("Submit Question"):
             "answered": bool(answer)
         })
         st.sidebar.success("Question submitted and answered!")
-        st.rerun()  # Changed from experimental_rerun to rerun
+        st.rerun()
 
 # Generate Course Button
 if uploaded_file and openai_api_key:
@@ -139,25 +149,22 @@ if uploaded_file and openai_api_key:
         
         try:
             # Show a spinner while processing
-            with st.spinner("Generating your personalized course..."):
-                # Extract text from uploaded file and store it
-                pdf_text = extract_pdf_text(uploaded_file)
-                st.session_state.extracted_text = pdf_text
-                
-                professional_context = f"Role: {role}, Focus: {', '.join(learning_focus)}"
+            with st.spinner("Generating your personalized professional course..."):
+                # Extract text from uploaded file and store it using the updated function
+                extracted_text = extract_text(uploaded_file)
+                st.session_state.extracted_text = extracted_text
                 
                 prompt = f"""
                 Design a professional learning course based on the given text.
-                Context: {professional_context}
-                Document: {pdf_text[:3000]}
+                Document: {extracted_text[:3000]}
                 
                 Create an engaging and comprehensive course with:
                 1. An inspiring course title
-                2. Detailed course description (at least 150 words)
-                3. 3-5 modules that build upon each other
-                4. Clear learning objectives for each module (3-5 objectives per module)
+                2. Detailed course description (at least 200 words)
+                3. 3-6 modules that build upon each other
+                4. Clear learning objectives for each module (3-6 objectives per module)
                 5. Detailed and informative content for each module (at least 300 words per module with examples, case studies, and practical applications)
-                6. A quiz with 2-3 thought-provoking questions per module
+                6. A quiz with 2-4 thought-provoking questions per module
                 
                 Return the response in the following JSON format:
                 {{
@@ -181,21 +188,21 @@ if uploaded_file and openai_api_key:
                     ]
                 }}
                 
-                Make the content practical, actionable, and tailored to the professional context.
+                Make the content practical, actionable, and tailored to professional development.
                 Provide detailed explanations, real-world examples, and practical applications in each module content.
                 """
                 
                 try:
-                    # New OpenAI API format (for openai >= 1.0.0)
+                    # New OpenAI API format
                     client = OpenAI(api_key=openai_api_key)
                     response = client.chat.completions.create(
-                        model=selected_model,  # Use the selected model
+                        model=selected_model,
                         messages=[{"role": "user", "content": prompt}],
                         response_format={"type": "json_object"},
                         temperature=0.7
                     )
                     
-                    # New way to access the response content
+                    # Access the response content
                     response_content = response.choices[0].message.content
                     
                     try:
@@ -209,18 +216,19 @@ if uploaded_file and openai_api_key:
                             total_questions += len(quiz.get("questions", []))
                         st.session_state.total_questions = total_questions
                         
-                        st.success("✅ Course Generated Successfully!")
+                        st.success("✅ Professional Course Generated Successfully!")
                     except json.JSONDecodeError as e:
                         st.error(f"Error parsing JSON response: {e}")
                         st.text(response_content)
                 
                 except Exception as e:
                     st.error(f"OpenAI API Error: {e}")
-                    st.error("Please check your API key and model selection.")
+                    st.error("Please check your API key.")
                     
         except Exception as e:
             st.error(f"Error: {e}")
 
+# The rest of your code remains the same
 # Function to check answer and update progress
 def check_answer(question_id, user_answer, correct_answer):
     if user_answer == correct_answer:
@@ -233,17 +241,16 @@ def check_answer(question_id, user_answer, correct_answer):
         return False
 
 # Main content area with tabs
-tab1, tab2 = st.tabs(["📚 Course Content", "❓ Employer Queries"])
+tab1, tab2 = st.tabs(["📚 Course Content", "❓ Questions"])
 
 with tab1:
     # Display Course Content
     if st.session_state.course_generated and st.session_state.course_content:
         course = st.session_state.course_content
         
-        # Course Header with appreciation
-        st.title(f"🌟 {course.get('course_title', 'Professional Course')}")
-        st.markdown(f"*Specially designed for {role}s focusing on {', '.join(learning_focus)}*")
-        st.write(course.get('course_description', 'A structured course to enhance your skills.'))
+        # Course Header
+        st.title(f"🌟 {course.get('course_title', 'Professional Learning Course')}")
+        st.write(course.get('course_description', 'A structured course to enhance your professional skills.'))
         
         # Progress tracker
         completed = len(st.session_state.completed_questions)
@@ -330,21 +337,20 @@ with tab1:
         st.markdown("""
         ## Transform your professional development with AI-powered learning
         
-        Upload a PDF document, and we'll create a personalized learning course just for you!
+        Upload a Markdown, text, or PDF document, and we'll create a personalized professional learning course just for you!
         
         ### How it works:
         1. Enter your OpenAI API key in the sidebar
-        2. Select your professional role and learning focus
-        3. Upload a PDF document related to your area of interest
-        4. Click "Generate Course" to create your personalized learning journey
+        2. Upload a Markdown (.md), text (.txt), or PDF (.pdf) document related to your area of interest
+        3. Click "Generate Course" to create your personalized professional learning journey
         
         Get ready to enhance your skills and accelerate your professional growth!
         """)
 
 with tab2:
-    st.title("💬 Employer Queries")
+    st.title("💬 Questions")
     st.markdown("""
-    This section allows employers to ask questions and get AI-generated answers about the course content or related topics.
+    This section allows you to ask questions and get AI-generated answers about the course content or related topics.
     Submit your questions in the sidebar, and our AI will automatically generate answers based on the uploaded document.
     """)
     
@@ -368,6 +374,6 @@ with tab2:
                         )
                         st.session_state.employer_queries[i]['answer'] = answer
                         st.session_state.employer_queries[i]['answered'] = True
-                        st.rerun()  # Changed from experimental_rerun to rerun
+                        st.rerun()
                     else:
                         st.warning("No document uploaded yet. Please upload a document to generate answers.")
