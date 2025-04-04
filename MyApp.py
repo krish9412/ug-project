@@ -4,7 +4,6 @@ import tempfile
 import json
 import io
 import requests
-import pdfplumber  # Changed from PyPDF2 to pdfplumber
 from openai import OpenAI  # New import format
 
 # Page Configuration
