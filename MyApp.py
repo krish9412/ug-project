@@ -3,6 +3,10 @@ import os
 import tempfile
 import json
 import io
+import markitdown
+import requests
+import pdfplumber
+from openai import OpenAI
 
 # Page Configuration
 st.set_page_config(page_title="📚 Professional Learning Platform", layout="wide")
