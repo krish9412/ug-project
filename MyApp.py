@@ -3,7 +3,7 @@ import os
 import tempfile
 import json
 import io
-import markitdown
+import markdown
 import requests
 import pdfplumber  # Changed from PyPDF2 to pdfplumber
 from openai import OpenAI  # New import format
