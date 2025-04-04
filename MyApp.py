@@ -4,7 +4,6 @@ import tempfile
 import json
 import io
 import requests
-from openai import OpenAI  # New import format
 
 # Page Configuration
 st.set_page_config(page_title="📚 Professional Learning Platform", layout="wide")
