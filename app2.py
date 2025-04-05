@@ -4,8 +4,7 @@ import tempfile
 import json
 import io
 import requests
-import pdfplumber
-from openai import OpenAI
+
 
 # Page Configurations
 st.set_page_config(page_title="📚 Professional Learning Platform", layout="wide")
