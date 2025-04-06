@@ -5,6 +5,8 @@ import json
 import io
 import requests
 import uuid
+import openai
+
 # Page Configurations
 st.set_page_config(page_title="📚 Professional Learning Platform", layout="wide")
 
@@ -35,8 +37,12 @@ if st.sidebar.button("🔄 Reset Application"):
     st.rerun()
 
 # OpenAI API Key
-openai_api_key = st.secrets("🔑 OpenAI API Key", type="password")
-os.environ["OPENAI_API_KEY"] = openai_api_key if openai_api_key else ""
+openai_api_key = st.sidebar.text_input("🔐 OpenAI API Key", type="password")
+
+if openai_api_key:
+    openai.api_key = openai_api_key
+else:
+    st.warning("Please enter your OpenAI API key to proceed.")
 
 # Model Selection
 model_options = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
