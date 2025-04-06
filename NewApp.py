@@ -38,12 +38,17 @@ if st.sidebar.button("🔄 Reset Application"):
     st.rerun()
     
 # Sidebar API key input
-api_key = st.sidebar.text_input("🔐 Enter your OpenAI API Key", type="password")
+import streamlit as st
 
-if api_key:
-    openai.api_key = api_key
-else:
-    st.warning("Please provide a valid OpenAI API key.")
+# Collect OpenAI key from sidebar
+openai_api_key = st.sidebar.text_input("🔑 Enter your OpenAI API key", type="password")
+
+# File uploader
+uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
+
+if uploaded_file and openai_api_key:
+    # Now it's safe to use both variables
+    pass  # your logic here
 
 # Model Selection
 model_options = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
