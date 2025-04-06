@@ -37,7 +37,7 @@ if st.sidebar.button("🔄 Reset Application"):
     st.rerun()
 
 # OpenAI API Key
-openai_api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
+openai_api_key = st.secrets("🔑 OpenAI API Key", type="password")
 os.environ["OPENAI_API_KEY"] = openai_api_key if openai_api_key else ""
 
 # Model Selection
