@@ -42,7 +42,7 @@ openai_api_key = st.sidebar.text_input("🔐 OpenAI API Key", type="password")
 if openai_api_key:
     openai.api_key = openai_api_key
 else:
-    st.warning("Please enter your OpenAI API key to proceed.")
+    st.warning("Please enter your Openai api key to proceed.")
 
 # Model Selection
 model_options = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
@@ -80,7 +80,7 @@ def extract_pdf_text(pdf_file):
 def generate_rag_answer(question, document_text, course_content=None):
     try:
         if not openai_api_key:
-            return "API key is required to generate answers."
+            return "api key is required to generate answers."
         
         if not document_text:
             return "Document text is not available. Please process a document first."
@@ -249,8 +249,8 @@ if uploaded_file and openai_api_key:
                         st.text(response_content)
                 
                 except Exception as e:
-                    st.error(f"OpenAI API Error: {e}")
-                    st.error("Please check your API key and model selection.")
+                    st.error(f"Openai api Error: {e}")
+                    st.error("Please check your api key and model selection.")
                     
         except Exception as e:
             st.error(f"Error: {e}")
