@@ -28,7 +28,7 @@ if 'session_id' not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
 # Sidebars
-st.sidebar.title("🎓Professional Learning System")
+st.sidebar.title("🎓 Professional Learning System")
 
 # Clear Session Button
 if st.sidebar.button("🔄 Reset Application"):
@@ -36,46 +36,48 @@ if st.sidebar.button("🔄 Reset Application"):
         del st.session_state[key]
     st.session_state.session_id = str(uuid.uuid4())
     st.rerun()
-    
-# Collect OpenAI key from sidebar
-openai_api_key = st.sidebar.text_input("🔑 Enter your Openai api key", type="password")
 
-if uploaded_file and openai_api_key:
-    # Now it's safe to use both variables
-    pass  # your logic here
+# 🔐 OpenAI API Key Input
+openai_api_key = st.sidebar.text_input("🔑 Enter your OpenAI API key", type="password")
 
-# Model Selection
-model_options = ["gpt-4o-mini"]
-selected_model = st.sidebar.selectbox("Select Openai Model", model_options, index=0)
-
-# File Uploader
+# 📄 File Uploader
 uploaded_file = st.sidebar.file_uploader("📝 Upload Training PDF", type=['pdf'])
 
-# Role selection
+# ✅ Check inputs before proceeding
+if uploaded_file and openai_api_key:
+    openai.api_key = openai_api_key  # Set key for OpenAI API use
+
+    # Extract text from PDF
+    def extract_pdf_text(pdf_file):
+        try:
+            pdf_file.seek(0)
+            with pdfplumber.open(pdf_file) as pdf:
+                text = ""
+                for page in pdf.pages:
+                    page_text = page.extract_text() or ""
+                    text += page_text + "\n"
+            return text
+        except Exception as e:
+            st.error(f"Error extracting PDF text: {e}")
+            return ""
+
+    # Run the PDF text extraction
+    extracted_text = extract_pdf_text(uploaded_file)
+    if extracted_text:
+        st.session_state.extracted_text = extracted_text
+        st.success("✅ PDF text extracted successfully!")
+else:
+    st.info("📥 Please upload a PDF file and enter your OpenAI API key to begin.")
+
+# 🎯 Model and Role selections
+model_options = ["gpt-4o-mini"]
+selected_model = st.sidebar.selectbox("Select OpenAI Model", model_options, index=0)
+
 role_options = ["Manager", "Executive", "Developer", "Designer", "Marketer", "Human Resources", "Other"]
 role = st.sidebar.selectbox("Select Your Role", role_options)
 
-# Learning focus Area (multi-select)
 learning_focus_options = ["Leadership", "Technical Skills", "Communication", "Project Management", "Innovation", "Team Building"]
 learning_focus = st.sidebar.multiselect("Select Learning Focus", learning_focus_options)
-
-# Extract PDF Text Function
-def extract_pdf_text(pdf_file):
-    try:
-        # Reset file pointer to beginning
-        pdf_file.seek(0)
-        
-        # Use pdfplumber to extract text
-        with pdfplumber.open(pdf_file) as pdf:
-            text = ""
-            for page in pdf.pages:
-                page_text = page.extract_text() or ""
-                text += page_text + "\n"
-        return text
-    except Exception as e:
-        st.error(f"Error extracting PDF text: {e}")
-        return ""
-
 # Enhanced RAG function using direct text search without vectors
 def generate_rag_answer(question, document_text, course_content=None):
     try:
