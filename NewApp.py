@@ -35,14 +35,14 @@ if st.sidebar.button("🔄 Reset Application"):
         del st.session_state[key]
     st.session_state.session_id = str(uuid.uuid4())
     st.rerun()
+    
+# Sidebar API key input
+api_key = st.sidebar.text_input("🔐 Enter your OpenAI API Key", type="password")
 
-# OpenAI API Key
-openai_api_key = st.sidebar.text_input("🔐 OpenAI API Key", type="password")
-
-if openai_api_key:
-    openai.api_key = openai_api_key
+if api_key:
+    openai.api_key = api_key
 else:
-    st.warning("Please enter your Openai api key to proceed.")
+    st.warning("Please provide a valid OpenAI API key.")
 
 # Model Selection
 model_options = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
