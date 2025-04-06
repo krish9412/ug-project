@@ -4,7 +4,6 @@ import tempfile
 import json
 import io
 import requests
-import pdfplumber
 import uuid
 from openai import OpenAI
 
