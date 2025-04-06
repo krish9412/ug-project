@@ -6,7 +6,7 @@ import io
 import requests
 import pdfplumber
 import uuid
-import openai
+from openai import OpenAI  # Correct import statement for OpenAI client
 
 # Page Configurations
 st.set_page_config(page_title="📚 Professional Learning Platform", layout="wide")
@@ -45,8 +45,6 @@ uploaded_file = st.sidebar.file_uploader("📝 Upload Training PDF", type=['pdf'
 
 # ✅ Check inputs before proceeding
 if uploaded_file and openai_api_key:
-    openai.api_key = openai_api_key  # Set key for OpenAI API use
-
     # Extract text from PDF
     def extract_pdf_text(pdf_file):
         try:
@@ -78,11 +76,12 @@ role = st.sidebar.selectbox("Select Your Role", role_options)
 
 learning_focus_options = ["Leadership", "Technical Skills", "Communication", "Project Management", "Innovation", "Team Building"]
 learning_focus = st.sidebar.multiselect("Select Learning Focus", learning_focus_options)
+
 # Enhanced RAG function using direct text search without vectors
 def generate_rag_answer(question, document_text, course_content=None):
     try:
         if not openai_api_key:
-            return "api key is required to generate answers."
+            return "API key is required to generate answers."
         
         if not document_text:
             return "Document text is not available. Please process a document first."
@@ -120,7 +119,7 @@ def generate_rag_answer(question, document_text, course_content=None):
         If the question cannot be answered based on the provided information, say so politely.
         """
         
-        # Create OpenAI client
+        # Create OpenAI client correctly
         client = OpenAI(api_key=openai_api_key)
         response = client.chat.completions.create(
             model=selected_model,
@@ -222,7 +221,7 @@ if uploaded_file and openai_api_key:
                 """
                 
                 try:
-                    # Create OpenAI client
+                    # Create OpenAI client correctly
                     client = OpenAI(api_key=openai_api_key)
                     response = client.chat.completions.create(
                         model=selected_model,
@@ -251,8 +250,8 @@ if uploaded_file and openai_api_key:
                         st.text(response_content)
                 
                 except Exception as e:
-                    st.error(f"Openai api Error: {e}")
-                    st.error("Please check your api key and model selection.")
+                    st.error(f"OpenAI API Error: {e}")
+                    st.error("Please check your API key and model selection.")
                     
         except Exception as e:
             st.error(f"Error: {e}")
@@ -413,4 +412,3 @@ with tab2:
                             st.session_state.employer_queries[i]['answered'] = True
                     else:
                         st.warning("No document uploaded yet. Please upload a document to generate answers.")
-
