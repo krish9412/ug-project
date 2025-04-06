@@ -6,12 +6,12 @@ import io
 import requests
 import pdfplumber
 import uuid
-from openai import OpenAI  # Correct import statement for OpenAI client
+from openai import OpenAI 
 
-# Page Configurations
+# Page Configuration
 st.set_page_config(page_title="📚 Professional Learning Platform", layout="wide")
 
-# Initialize session state variables
+# Initializing sessions state variables
 if 'course_content' not in st.session_state:
     st.session_state.course_content = None
 if 'course_generated' not in st.session_state:
@@ -27,20 +27,20 @@ if 'employer_queries' not in st.session_state:
 if 'session_id' not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
-# Sidebars
+# Sidebars Appearence
 st.sidebar.title("🎓 Professional Learning System")
 
-# Clear Session Button
+# Clear Sessions Button & Session Management
 if st.sidebar.button("🔄 Reset Application"):
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.session_state.session_id = str(uuid.uuid4())
     st.rerun()
 
-# 🔐 OpenAI API Key Input
+# 🔐 OpenAI API Key Inputs
 openai_api_key = st.sidebar.text_input("🔑 Enter your OpenAI API key", type="password")
 
-# 📄 File Uploader
+# 📄 File Uploader PDF
 uploaded_file = st.sidebar.file_uploader("📝 Upload Training PDF", type=['pdf'])
 
 # ✅ Check inputs before proceeding
@@ -65,16 +65,16 @@ if uploaded_file and openai_api_key:
         st.session_state.extracted_text = extracted_text
         st.success("✅ PDF text extracted successfully!")
 else:
-    st.info("📥 Please upload a PDF file and enter your OpenAI API key to begin.")
+    st.info("📥 Please enter your OpenAI API key and upload a PDF file to begin.")
 
-# 🎯 Model and Role selections
+# 🎯 GPT Model and Role selection
 model_options = ["gpt-4o-mini"]
 selected_model = st.sidebar.selectbox("Select OpenAI Model", model_options, index=0)
 
-role_options = ["Manager", "Executive", "Developer", "Designer", "Marketer", "Human Resources", "Other"]
+role_options = ["Manager", "Executive", "Developer", "Designer", "Marketer", "Human Resources", "Other","Fresher"]
 role = st.sidebar.selectbox("Select Your Role", role_options)
 
-learning_focus_options = ["Leadership", "Technical Skills", "Communication", "Project Management", "Innovation", "Team Building"]
+learning_focus_options = ["Leadership", "Technical Skills", "Communication", "Project Management", "Innovation", "Team Building","Finance"]
 learning_focus = st.sidebar.multiselect("Select Learning Focus", learning_focus_options)
 
 # Enhanced RAG function using direct text search without vectors
@@ -115,7 +115,7 @@ def generate_rag_answer(question, document_text, course_content=None):
         
         Course Information: {course_context}
         
-        Provide a comprehensive answer using information from the document and course content.
+        Provide a comprehensive answer using information from the document and course contents.
         If the question cannot be answered based on the provided information, say so politely.
         """
         
@@ -127,20 +127,21 @@ def generate_rag_answer(question, document_text, course_content=None):
             temperature=0.5
         )
         
-        # Return generated answer
+        # Return generated answers
         return response.choices[0].message.content
         
     except Exception as e:
         return f"Error generating answer: {str(e)}"
 
-# Employer Queries Section in Sidebar
+# Employee Queries Section in Sidebar
 st.sidebar.markdown("---")
 st.sidebar.subheader("💬 Employer Queries")
 
 new_query = st.sidebar.text_area("Add a new question:", height=100)
 if st.sidebar.button("Submit Question"):
     if new_query:
-        # Generate answer automatically if document is available
+
+        # Generate proper answers automatically if document is available
         answer = ""
         if st.session_state.extracted_text:
             with st.spinner("Generating answer..."):
@@ -160,15 +161,15 @@ if st.sidebar.button("Submit Question"):
         st.sidebar.success("Question submitted and answered!")
         st.rerun()
 
-# Generate Course Button
+# Generating Course Button 
 if uploaded_file and openai_api_key:
-    if st.sidebar.button("🚀 Generate Your Course"):
+    if st.sidebar.button("🚀 Generate My Course"):
         st.session_state.course_generated = False
         # Reset completed questions when generating a new course
         st.session_state.completed_questions = set()
         
         try:
-            # Show a spinner while processing
+# Show a spinner while processing
             with st.spinner("Generating your personalized course..."):
                 # Extract text from uploaded file and store it
                 pdf_text = extract_pdf_text(uploaded_file)
@@ -176,7 +177,7 @@ if uploaded_file and openai_api_key:
                 
                 professional_context = f"Role: {role}, Focus: {', '.join(learning_focus)}"
                 
-                # Get a document summary first (optional)
+# Get a document summary first (optional)
                 summary_query = "Create a comprehensive summary of this document highlighting key concepts, theories, and practical applications."
                 document_summary = generate_rag_answer(summary_query, pdf_text)
                 
@@ -187,12 +188,12 @@ if uploaded_file and openai_api_key:
                 Document Content: {pdf_text[:3000]}
                 
                 Create an engaging and comprehensive course with:
-                1. An inspiring course title
-                2. Detailed course description (at least 200 words)
-                3. 3-6 modules that build upon each other
-                4. Clear learning objectives for each module (3-6 objectives per module)
+                1. An inspiring course title that reflects the professional context
+                2. Detailed course description with summaries (at least 200 words)
+                3. 3-6 modules that build upon each other in a logical sequence
+                4. Clear learning objectives for each module (3-6 objectives per module) with examples and practical applications
                 5. Detailed and informative content for each module (at least 300 words per module with examples, case studies, and practical applications)
-                6. A quiz with 2-3 thought-provoking questions per module
+                6. A quiz with 2-3 thought-provoking questions per module for better understandings
                 
                 Return the response in the following JSON format:
                 {{
@@ -221,7 +222,7 @@ if uploaded_file and openai_api_key:
                 """
                 
                 try:
-                    # Create OpenAI client correctly
+              # Create OpenAI client correctly
                     client = OpenAI(api_key=openai_api_key)
                     response = client.chat.completions.create(
                         model=selected_model,
@@ -230,21 +231,21 @@ if uploaded_file and openai_api_key:
                         temperature=0.7
                     )
                     
-                    # Access the response content
+              # Accessing the response content
                     response_content = response.choices[0].message.content
                     
                     try:
                         st.session_state.course_content = json.loads(response_content)
                         st.session_state.course_generated = True
                         
-                        # Count total questions for progress tracking
+                    # Count total questions for progress tracking
                         total_questions = 0
                         for module in st.session_state.course_content.get("modules", []):
                             quiz = module.get("quiz", {})
                             total_questions += len(quiz.get("questions", []))
                         st.session_state.total_questions = total_questions
                         
-                        st.success("✅ Course Generated Successfully!")
+                        st.success("✅ Your Course is Ready!")
                     except json.JSONDecodeError as e:
                         st.error(f"Error parsing JSON response: {e}")
                         st.text(response_content)
@@ -256,18 +257,18 @@ if uploaded_file and openai_api_key:
         except Exception as e:
             st.error(f"Error: {e}")
 
-# Function to check answer and update progress
+# Functions to check answer and update progress
 def check_answer(question_id, user_answer, correct_answer):
     if user_answer == correct_answer:
         st.success("🎉 Correct! Well done!")
-        # Add to completed questions set if not already there
+# Add to completed questions set if not already there
         st.session_state.completed_questions.add(question_id)
         return True
     else:
         st.error(f"Not quite. The correct answer is: {correct_answer}")
         return False
 
-# Main content area with tabs
+# Main contents area with tabs
 tab1, tab2 = st.tabs(["📚 Course Content", "❓ Employer Queries"])
 
 with tab1:
@@ -280,7 +281,7 @@ with tab1:
         st.markdown(f"*Specially designed for {role}s focusing on {', '.join(learning_focus)}*")
         st.write(course.get('course_description', 'A structured course to enhance your skills.'))
         
-        # Progress tracker
+        # Tracking the Progress
         completed = len(st.session_state.completed_questions)
         total = st.session_state.total_questions
         progress_percentage = (completed / total * 100) if total > 0 else 0
@@ -302,7 +303,7 @@ with tab1:
         
         st.markdown("---")
         
-        # Detailed Module Content
+        # Detailed Module Contents
         for i, module in enumerate(modules, 1):
             module_title = module.get('title', f'Module {i}')
             with st.expander(f"📚 Module {i}: {module_title}"):
@@ -317,7 +318,7 @@ with tab1:
                 st.markdown("### Module Content:")
                 module_content = module.get('content', 'No content available for this module.')
                 
-                # Split content into paragraphs and add proper formatting
+        # Spliting the content into paragraphs and add proper formatting
                 paragraphs = module_content.split('\n\n')
                 for para in paragraphs:
                     st.markdown(para)
@@ -326,7 +327,7 @@ with tab1:
                 st.markdown("### Key Takeaways:")
                 st.info("The content in this module will help you develop practical skills that you can apply immediately in your professional context.")
                 
-                # Safely access quiz questions
+          # Safely access quiz questions
                 st.markdown("### Module Quiz:")
                 quiz = module.get('quiz', {})
                 questions = quiz.get('questions', [])
@@ -351,7 +352,7 @@ with tab1:
                         else:
                             st.write("No options available for this question.")
                         
-                        # Show completion status for this question
+                      # Show completion status for this question
                         if question_id in st.session_state.completed_questions:
                             st.success("✓ Question completed")
                         
@@ -363,9 +364,9 @@ with tab1:
         # Welcome screen when no course is generated yet
         st.title("Welcome to Professional Learning Platform")
         st.markdown("""
-        ## Transform your professional development with AI-powered learning
+        ## Transform your professional development with AI-powered learning system
         
-        Upload a PDF document, and we'll create a personalized learning course just for you!
+        Upload a PDF document, and I'll create a personalized learning course just for you!
         
         ### How it works:
         1. Enter your OpenAI API key in the sidebar
@@ -394,7 +395,7 @@ with tab2:
                     st.write(f"**Answer:** {query['answer']}")
                 else:
                     st.info("Generating answer...")
-                    # Generate answer on-demand if not already answered
+      # Generate answer on-demand if not already answered
                     if st.session_state.extracted_text:
                         try:
                             answer = generate_rag_answer(
