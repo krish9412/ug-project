@@ -1,3 +1,6 @@
 streamlit
-openai
 pdfplumber
+chromadb
+openai
+uuid
+requests
