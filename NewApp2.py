@@ -316,7 +316,7 @@ def perform_course_generation():
     st.session_state.is_generating = False
 
 # Main contents area with tabs
-tab1, tab2, tab3 = st.tabs(["📚 Course Content", "❓ Employer Queries", "📑 Document Sources"])
+tab1, tab2, tab3 = st.tabs(["📚 Course Content", "❓ Employee Queries", "📑 Document Sources"])
 
 # Check if we're in the middle of generating a course and need to continue
 if st.session_state.is_generating:
@@ -462,7 +462,7 @@ with tab1:
             st.info("Generating your personalized course... Please wait.")
 
 with tab2:
-    st.title("💬 Employer Queries")
+    st.title("💬 Employee Queries")
     st.markdown("""
     This section allows employers to ask questions and get AI-generated answers about the course content or related topics.
     Submit your questions in the sidebar, and our AI will automatically generate answers based on the uploaded documents.
