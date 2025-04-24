@@ -1,8 +1,5 @@
 streamlit
 pdfplumber
-chromadb==0.4.18
 openai
 uuid
-requests
-sentence-transformers>=2.2.2
-pydantic>=1.9,<2.0
+
