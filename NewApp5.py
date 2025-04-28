@@ -487,5 +487,3 @@ with tab_docs:
                         )
                         st.markdown("### Summary:")
                         st.write(summary)
-
-!pip install streamlit
