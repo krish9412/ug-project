@@ -295,9 +295,19 @@ def initiate_course_creation():
 # Course Content Generation
 async def create_course_content():
     try:
+        # Group chunks by PDF filename
+        doc_chunks_by_pdf = {}
+        for chunk in st.session_state.doc_chunks:
+            filename = chunk['metadata']['filename']
+            if filename not in doc_chunks_by_pdf:
+                doc_chunks_by_pdf[filename] = []
+            doc_chunks_by_pdf[filename].append(chunk)
+
+        # Build context for each PDF
         doc_context = ""
-        for i, chunk in enumerate(st.session_state.doc_chunks, 1):
-            doc_context += f"\n--- Document {i} ({chunk['metadata']['filename']}) ---\n{chunk['text'][:3000]}\n"
+        for i, (filename, chunks) in enumerate(doc_chunks_by_pdf.items(), 1):
+            pdf_content = "\n".join(chunk['text'][:3000] for chunk in chunks)
+            doc_context += f"\n--- Document {i}: {filename} ---\n{pdf_content}\n"
 
         role_context = f"Role: {selected_role}, Focus: {', '.join(selected_focus)}"
         summary_query = "Summarize the key concepts, theories, and applications from these documents."
@@ -310,19 +320,20 @@ async def create_course_content():
         doc_summary = generate_answer(summary_query, summary_chunks)
 
         prompt = f"""
-        Create a professional learning course based on multiple documents.
+        Create a professional learning course based on multiple documents. The documents are provided below, with each document representing a separate PDF file.
+
         Context: {role_context}
         Document Summary: {doc_summary}
         Documents: {doc_context[:5000]}
 
         Design a course by:
-        1. Analyzing documents for themes and insights
-        2. Crafting an inspiring course title
-        3. Writing a 300-word course description
-        4. Developing 5-8 modules in logical sequence
-        5. Defining 4-6 learning objectives per module
-        6. Summarizing the module content in 5-8 concise, digestible bullet points that directly help trainees answer the quiz questions. Each bullet point should be a clear, focused takeaway that connects to the quiz content.
-        7. Including 3-5 quiz questions per module
+        1. Analyzing each document (PDF) separately to identify its themes and insights.
+        2. Crafting an inspiring course title that reflects the combined focus of all documents.
+        3. Writing a 300-word course description that summarizes the overall learning objectives.
+        4. Developing 2-4 modules for each PDF, ensuring that each module focuses exclusively on the content of its respective PDF. The total number of modules should be between 4 and 8 for the entire course.
+        5. Defining 4-6 learning objectives per module, specific to the PDF's content.
+        6. Summarizing the module content in 5-8 concise, digestible bullet points that directly help trainees answer the quiz questions. Each bullet point should be a clear, focused takeaway that connects to the quiz content and the specific PDF.
+        7. Including 3-5 quiz questions per module, with each question directly related to the content of the module and the specific PDF.
 
         Return JSON:
         {{
@@ -331,6 +342,7 @@ async def create_course_content():
             "modules": [
                 {{
                     "title": "Module Title",
+                    "source_pdf": "Filename of the PDF",
                     "learning_objectives": ["Obj1", "Obj2"],
                     "content": "Bullet-point content",
                     "quiz": {{
@@ -397,11 +409,13 @@ with tab_course:
         st.subheader("📋 Course Outline")
         modules = course.get('modules', [])
         for i, module in enumerate(modules, 1):
-            st.write(f"**Module {i}:** {module.get('title', f'Module {i}')}")
+            source_pdf = module.get('source_pdf', 'Unknown PDF')
+            st.write(f"**Module {i}:** {module.get('title', f'Module {i}')} (Source: {source_pdf})")
 
         st.markdown("---")
         for i, module in enumerate(modules, 1):
-            with st.expander(f"📚 Module {i}: {module.get('title', f'Module {i}')}"):
+            source_pdf = module.get('source_pdf', 'Unknown PDF')
+            with st.expander(f"📚 Module {i}: {module.get('title', f'Module {i}')} (Source: {source_pdf})"):
                 st.markdown("### 🎯 Objectives")
                 for obj in module.get('learning_objectives', []):
                     st.markdown(f"- {obj}")
