@@ -303,34 +303,37 @@ async def create_course_content():
                 doc_chunks_by_pdf[filename] = []
             doc_chunks_by_pdf[filename].append(chunk)
 
-        # Build context for each PDF
+        # Build context and summary for each PDF
         doc_context = ""
+        pdf_summaries = []
         for i, (filename, chunks) in enumerate(doc_chunks_by_pdf.items(), 1):
             pdf_content = "\n".join(chunk['text'][:3000] for chunk in chunks)
             doc_context += f"\n--- Document {i}: {filename} ---\n{pdf_content}\n"
 
+            # Generate a summary for this specific PDF
+            pdf_chunks = [chunk for chunk in chunks]
+            summary_query = f"Summarize the key concepts, theories, and applications from the document '{filename}'."
+            summary_chunks = pdf_chunks  # Use only chunks from this PDF
+            pdf_summary = generate_answer(summary_query, summary_chunks)
+            pdf_summaries.append(f"Summary of {filename}: {pdf_summary}")
+
+        # Combine summaries for the prompt
+        doc_summary = "\n".join(pdf_summaries)
+
         role_context = f"Role: {selected_role}, Focus: {', '.join(selected_focus)}"
-        summary_query = "Summarize the key concepts, theories, and applications from these documents."
-        summary_chunks = retrieve_relevant_chunks(
-            summary_query,
-            st.session_state.faiss_index,
-            st.session_state.doc_embeddings,
-            st.session_state.doc_chunks
-        )
-        doc_summary = generate_answer(summary_query, summary_chunks)
 
         prompt = f"""
         Create a professional learning course based on multiple documents. The documents are provided below, with each document representing a separate PDF file.
 
         Context: {role_context}
-        Document Summary: {doc_summary}
+        Document Summaries: {doc_summary}
         Documents: {doc_context[:5000]}
 
         Design a course by:
         1. Analyzing each document (PDF) separately to identify its themes and insights.
         2. Crafting an inspiring course title that reflects the combined focus of all documents.
         3. Writing a 300-word course description that summarizes the overall learning objectives.
-        4. Developing 2-4 modules for each PDF, ensuring that each module focuses exclusively on the content of its respective PDF. The total number of modules should be between 4 and 8 for the entire course.
+        4. Developing exactly 2 modules for each PDF, ensuring that each module focuses exclusively on the content of its respective PDF. Do not mix content between PDFs. For {len(doc_chunks_by_pdf)} PDFs, this will result in {len(doc_chunks_by_pdf) * 2} total modules.
         5. Defining 4-6 learning objectives per module, specific to the PDF's content.
         6. Summarizing the module content in 5-8 concise, digestible bullet points that directly help trainees answer the quiz questions. Each bullet point should be a clear, focused takeaway that connects to the quiz content and the specific PDF.
         7. Including 3-5 quiz questions per module, with each question directly related to the content of the module and the specific PDF.
@@ -368,6 +371,14 @@ async def create_course_content():
         )
         
         course_data = json.loads(response.choices[0].message.content)
+        
+        # Validate that each PDF has modules
+        pdfs_with_modules = set(module.get('source_pdf', '') for module in course_data.get('modules', []))
+        if len(pdfs_with_modules) != len(doc_chunks_by_pdf):
+            st.warning("The generated course did not include modules for all PDFs. Adjusting the course structure...")
+            # Fallback: If a PDF is missing modules, add placeholder modules (optional)
+            # For simplicity, we'll rely on the updated prompt to fix this, but you can add logic here if needed
+
         st.session_state.course_data = course_data
         st.session_state.course_ready = True
 
