@@ -182,11 +182,11 @@ def generate_answer(query, chunks, course_data=None):
         return "API key required."
     if not chunks:
         return "No relevant document chunks found."
-
+    
     context = ""
     for i, chunk in enumerate(chunks[:3], 1):
         context += f"Document {i} ({chunk['metadata']['filename']}):\n{chunk['text'][:2000]}\n\n"
-
+    
     course_context = ""
     if course_data:
         course_context = f"""
@@ -198,9 +198,9 @@ def generate_answer(query, chunks, course_data=None):
             course_context += f"""
             Module {i}: {module.get('title', '')}
             Objectives: {', '.join(module.get('learning_objectives', []))}
-            Content: {module.getContent('content', '')[:200]}...
+            Content: {module.get('content', '')[:200]}...
             """
-
+    
     prompt = f"""
     As a learning assistant, provide a detailed answer to the following question based on the provided context and course information. Be precise and reference specific documents.
 
@@ -212,7 +212,7 @@ def generate_answer(query, chunks, course_data=None):
 
     Answer comprehensively, citing documents where applicable. If the information is insufficient, state so clearly.
     """
-
+    
     try:
         client = OpenAI(api_key=api_key)
         response = client.chat.completions.create(
@@ -246,7 +246,7 @@ if st.sidebar.button("Add Query"):
                 )
         else:
             answer = "Please upload documents to enable query answering."
-
+        
         st.session_state.queries.append({
             "query": query_input,
             "response": answer,
@@ -325,7 +325,7 @@ async def create_course_content():
             ]
         }}
         """
-
+        
         client = OpenAI(api_key=api_key)
         response = client.chat.completions.create(
             model=selected_model,
@@ -333,7 +333,7 @@ async def create_course_content():
             response_format={"type": "json_object"},
             temperature=0.7
         )
-
+        
         course_data = json.loads(response.choices[0].message.content)
         st.session_state.course_data = course_data
         st.session_state.course_ready = True
