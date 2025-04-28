@@ -290,12 +290,15 @@ def verify_answer(q_id, user_response, correct_response, options):
 def initiate_course_creation():
     st.session_state.generating = True
     st.session_state.course_ready = False
-    st.rerun()
 
 # Course Content Generation
 async def create_course_content():
     try:
+        # Debugging: Log start of the process
+        st.info("Starting course generation process...")
+
         # Group chunks by PDF filename
+        st.info("Grouping document chunks by PDF...")
         doc_chunks_by_pdf = {}
         for chunk in st.session_state.doc_chunks:
             filename = chunk['metadata']['filename']
@@ -304,10 +307,11 @@ async def create_course_content():
             doc_chunks_by_pdf[filename].append(chunk)
 
         # Build context and summary for each PDF
+        st.info("Building context and summaries for each PDF...")
         doc_context = ""
         pdf_summaries = []
         for i, (filename, chunks) in enumerate(doc_chunks_by_pdf.items(), 1):
-            pdf_content = "\n".join(chunk['text'][:3000] for chunk in chunks)
+            pdf_content = "\n".join(chunk['text'][:2000] for chunk in chunks)  # Reduced from 3000 to 2000
             doc_context += f"\n--- Document {i}: {filename} ---\n{pdf_content}\n"
 
             # Generate a summary for this specific PDF
@@ -322,12 +326,16 @@ async def create_course_content():
 
         role_context = f"Role: {selected_role}, Focus: {', '.join(selected_focus)}"
 
+        # Truncate doc_context and doc_summary to avoid exceeding API limits
+        doc_context = doc_context[:4000]  # Reduced from 5000 to 4000
+        doc_summary = doc_summary[:1500]  # Add truncation for summaries
+
         prompt = f"""
         Create a professional learning course based on multiple documents. The documents are provided below, with each document representing a separate PDF file.
 
         Context: {role_context}
         Document Summaries: {doc_summary}
-        Documents: {doc_context[:5000]}
+        Documents: {doc_context}
 
         Design a course by:
         1. Analyzing each document (PDF) separately to identify its themes and insights.
@@ -362,17 +370,31 @@ async def create_course_content():
         }}
         """
         
+        # Debugging: Log before API call
+        st.info("Calling OpenAI API to generate course content...")
+
+        # Add timeout for the API call
         client = OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model=selected_model,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.7
-        )
-        
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.chat.completions.create,
+                    model=selected_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format={"type": "json_object"},
+                    temperature=0.7
+                ),
+                timeout=300  # 5-minute timeout
+            )
+        except asyncio.TimeoutError:
+            raise Exception("OpenAI API call timed out after 5 minutes. Please try again or use a smaller PDF.")
+
+        # Debugging: Log after API call
+        st.info("Received response from OpenAI API. Processing...")
+
         course_data = json.loads(response.choices[0].message.content)
         
-        # Validate that each PDF has modules and content is sufficient
+        # Validate that each PDF has modules
         pdfs_with_modules = set(module.get('source_pdf', '') for module in course_data.get('modules', []))
         if len(pdfs_with_modules) != len(doc_chunks_by_pdf):
             st.warning("The generated course did not include modules for all PDFs. Adjusting the course structure...")
@@ -397,20 +419,18 @@ async def create_course_content():
         )
         st.session_state.question_count = total_questions
 
+        st.success("✅ Course created successfully!")
+
     except Exception as e:
-        st.error(f"Course creation failed: {e}")
+        st.error(f"Course creation failed: {str(e)}")
+        # Ensure the generating flag is reset even on error
+        st.session_state.generating = False
+        st.session_state.course_ready = False
     finally:
         st.session_state.generating = False
 
 # Main UI with Tabs
 tab_course, tab_queries, tab_docs = st.tabs(["📚 Course", "❓ Queries", "📑 Sources"])
-
-if st.session_state.generating:
-    with st.spinner("Crafting your course..."):
-        st.session_state.answered_questions = set()
-        asyncio.run(create_course_content())
-        st.success("✅ Course created!")
-        st.rerun()
 
 with tab_course:
     if st.session_state.course_ready and st.session_state.course_data:
@@ -491,6 +511,10 @@ with tab_course:
             with col2:
                 if st.button("🚀 Create Course", use_container_width=True):
                     initiate_course_creation()
+                    st.session_state.answered_questions = set()
+                    with st.spinner("Crafting your course..."):
+                        asyncio.run(create_course_content())
+                    # No st.rerun() here; let create_course_content handle the state
 
 with tab_queries:
     st.title("💬 Queries")
