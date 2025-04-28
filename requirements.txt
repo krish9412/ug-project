@@ -1,4 +1,5 @@
 streamlit
-pdfplumber
+pymupdf
+numpy
+faiss-cpu
 openai
-uuid
