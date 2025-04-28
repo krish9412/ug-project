@@ -386,7 +386,8 @@ with tab_course:
                     st.markdown(f"- {obj}")
 
                 st.markdown("### 📖 Content")
-                content = module.get('content', '').split('\n')
+                content_value = module.get('content', '')
+                content = content_value.split('\n') if isinstance(content_value, str) else []
                 for line in content:
                     if line.strip():
                         st.markdown(f"• {line}" if not line.startswith(('- ', '* ', '• ')) else line)
