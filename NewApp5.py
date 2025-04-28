@@ -183,10 +183,20 @@ def generate_answer(query, chunks, course_data=None):
     if not chunks:
         return "No relevant document chunks found."
     
+    # Build context from retrieved chunks
     context = ""
     for i, chunk in enumerate(chunks[:3], 1):
         context += f"Document {i} ({chunk['metadata']['filename']}):\n{chunk['text'][:2000]}\n\n"
     
+    # Check if the retrieved chunks are relevant to the query
+    query_lower = query.lower()
+    context_lower = context.lower()
+    relevant = any(word in context_lower for word in query_lower.split() if len(word) > 3)  # Basic relevance check
+    
+    if not relevant:
+        return f"The question '{query}' is not directly related to the content in the provided documents. The documents focus on topics like communication skills, employee engagement, and teamwork. Please ask a question related to these topics, or upload additional documents that cover the desired subject matter."
+    
+    # Build course context if available
     course_context = ""
     if course_data:
         course_context = f"""
@@ -201,8 +211,9 @@ def generate_answer(query, chunks, course_data=None):
             Content: {module.get('content', '')[:200]}...
             """
     
+    # Updated prompt to enforce strict context usage
     prompt = f"""
-    As a learning assistant, provide a detailed answer to the following question based on the provided context and course information. Be precise and reference specific documents.
+    You are a learning assistant. Your task is to provide a detailed answer to the following question based EXCLUSIVELY on the provided document context and course information. Do NOT use any external knowledge or assumptions beyond what is explicitly stated in the context. If the information is not available in the context, clearly state that the answer cannot be found in the provided documents and suggest asking a question related to the document topics.
 
     Question: {query}
 
@@ -210,7 +221,7 @@ def generate_answer(query, chunks, course_data=None):
 
     Course Context: {course_context}
 
-    Answer comprehensively, citing documents where applicable. If the information is insufficient, state so clearly.
+    Answer strictly based on the provided context, citing specific documents where applicable. If the information is insufficient, state so clearly and do not provide an answer based on external knowledge.
     """
     
     try:
@@ -256,13 +267,23 @@ if st.sidebar.button("Add Query"):
         st.rerun()
 
 # Answer Verification
-def verify_answer(q_id, user_response, correct_response):
-    if user_response == correct_response:
+def verify_answer(q_id, user_response, correct_response, options):
+    # Map the correct_response (e.g., "B") to the corresponding option text
+    option_mapping = {"A": 0, "B": 1, "C": 2, "D": 3}
+    if correct_response in option_mapping:
+        correct_option_index = option_mapping[correct_response]
+        correct_option_text = options[correct_option_index]
+    else:
+        correct_option_text = correct_response  # Fallback in case correct_response is already the full text
+
+    if user_response == correct_option_text:
         st.session_state.answered_questions.add(q_id)
+        st.session_state[f"correct_{q_id}"] = True  # Track correct answers
         st.success("✅ Correct!")
         return True
     else:
-        st.error(f"Incorrect. Correct answer: {correct_response}")
+        st.session_state[f"correct_{q_id}"] = False  # Track incorrect answers
+        st.error(f"Incorrect. Correct answer: {correct_option_text}")
         return False
 
 # Course Generation Trigger
@@ -300,7 +321,7 @@ async def create_course_content():
         3. Writing a 300-word course description
         4. Developing 5-8 modules in logical sequence
         5. Defining 4-6 learning objectives per module
-        6. Creating detailed module content as bullet points (10-15 points, practical and quiz-relevant)
+        6. Summarizing the module content in 5-8 concise, digestible bullet points that directly help trainees answer the quiz questions. Each bullet point should be a clear, focused takeaway that connects to the quiz content.
         7. Including 3-5 quiz questions per module
 
         Return JSON:
@@ -316,8 +337,8 @@ async def create_course_content():
                         "questions": [
                             {{
                                 "question": "Text",
-                                "options": ["A", "B", "C", "D"],
-                                "correct_answer": "A"
+                                "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+                                "correct_answer": "Option 2"  # Use the full text of the correct option
                             }}
                         ]
                     }}
@@ -400,14 +421,21 @@ with tab_course:
                     q_id = f"mod_{i}_q_{q_idx}"
                     st.markdown(f"**Question {q_idx}:** {q.get('question', '')}")
                     options = q.get('options', [])
+                    correct_response = q.get('correct_answer', '')
                     if options:
                         option_key = f"quiz_{i}_{q_idx}"
                         user_answer = st.radio("Choose:", options, key=option_key)
                         submit_key = f"submit_{i}_{q_idx}"
                         if q_id in st.session_state.answered_questions:
-                            st.success("✓ Completed")
+                            if st.session_state.get(f"correct_{q_id}", False):
+                                st.success("✓ Correct!")
+                            else:
+                                # Map the correct_response to the full text for display
+                                option_mapping = {"A": 0, "B": 1, "C": 2, "D": 3}
+                                correct_option_text = options[option_mapping.get(correct_response, 0)] if correct_response in option_mapping else correct_response
+                                st.error(f"Incorrect. Correct answer: {correct_option_text}")
                         elif st.button("Check", key=submit_key):
-                            verify_answer(q_id, user_answer, q.get('correct_answer', ''))
+                            verify_answer(q_id, user_answer, correct_response, options)
                     st.markdown("---")
     else:
         st.title("Advanced Learning Hub")
