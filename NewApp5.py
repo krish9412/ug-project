@@ -181,7 +181,7 @@ def generate_answer(query, chunks, course_data=None):
     if not api_key:
         return "API key required."
     if not chunks:
-        return "No relevant document chunks found."
+        return "No relevant document chunks found to summarize."
     
     # Build context from retrieved chunks
     context = ""
@@ -194,7 +194,7 @@ def generate_answer(query, chunks, course_data=None):
     relevant = any(word in context_lower for word in query_lower.split() if len(word) > 3)  # Basic relevance check
     
     if not relevant:
-        return f"The question '{query}' is not directly related to the content in the provided documents. The documents focus on topics like communication skills, employee engagement, and teamwork. Please ask a question related to these topics, or upload additional documents that cover the desired subject matter."
+        return "Unable to generate a summary due to lack of relevant content in the provided documents."
     
     # Build course context if available
     course_context = ""
@@ -213,7 +213,7 @@ def generate_answer(query, chunks, course_data=None):
     
     # Updated prompt to enforce strict context usage
     prompt = f"""
-    You are a learning assistant. Your task is to provide a detailed answer to the following question based EXCLUSIVELY on the provided document context and course information. Do NOT use any external knowledge or assumptions beyond what is explicitly stated in the context. If the information is not available in the context, clearly state that the answer cannot be found in the provided documents and suggest asking a question related to the document topics.
+    You are a learning assistant. Your task is to provide a detailed answer to the following question based EXCLUSIVELY on the provided document context and course information. Do NOT use any external knowledge or assumptions beyond what is explicitly stated in the context. If the information is not available in the context, return a placeholder summary stating that the content is insufficient.
 
     Question: {query}
 
@@ -221,7 +221,7 @@ def generate_answer(query, chunks, course_data=None):
 
     Course Context: {course_context}
 
-    Answer strictly based on the provided context, citing specific documents where applicable. If the information is insufficient, state so clearly and do not provide an answer based on external knowledge.
+    Answer strictly based on the provided context, citing specific documents where applicable. If the information is insufficient, return: "Insufficient content to generate a detailed summary."
     """
     
     try:
@@ -233,7 +233,7 @@ def generate_answer(query, chunks, course_data=None):
         )
         return response.choices[0].message.content
     except Exception as e:
-        return f"Answer generation error: {str(e)}"
+        return f"Failed to generate summary due to API error: {str(e)}"
 
 # Employer Queries
 st.sidebar.markdown("---")
@@ -311,7 +311,7 @@ async def create_course_content():
         doc_context = ""
         pdf_summaries = []
         for i, (filename, chunks) in enumerate(doc_chunks_by_pdf.items(), 1):
-            pdf_content = "\n".join(chunk['text'][:2000] for chunk in chunks)  # Reduced from 3000 to 2000
+            pdf_content = "\n".join(chunk['text'][:2000] for chunk in chunks)  # Limit to 2000 chars per PDF
             doc_context += f"\n--- Document {i}: {filename} ---\n{pdf_content}\n"
 
             # Generate a summary for this specific PDF
@@ -319,6 +319,9 @@ async def create_course_content():
             summary_query = f"Summarize the key concepts, theories, and applications from the document '{filename}'."
             summary_chunks = pdf_chunks  # Use only chunks from this PDF
             pdf_summary = generate_answer(summary_query, summary_chunks)
+            # Ensure pdf_summary is a string
+            if not isinstance(pdf_summary, str):
+                pdf_summary = "Unable to generate summary due to unexpected response format."
             pdf_summaries.append(f"Summary of {filename}: {pdf_summary}")
 
         # Combine summaries for the prompt
@@ -327,8 +330,8 @@ async def create_course_content():
         role_context = f"Role: {selected_role}, Focus: {', '.join(selected_focus)}"
 
         # Truncate doc_context and doc_summary to avoid exceeding API limits
-        doc_context = doc_context[:4000]  # Reduced from 5000 to 4000
-        doc_summary = doc_summary[:1500]  # Add truncation for summaries
+        doc_context = doc_context[:4000]  # Total limit
+        doc_summary = doc_summary[:1500]  # Total summary limit
 
         prompt = f"""
         Create a professional learning course based on multiple documents. The documents are provided below, with each document representing a separate PDF file.
@@ -392,16 +395,25 @@ async def create_course_content():
         # Debugging: Log after API call
         st.info("Received response from OpenAI API. Processing...")
 
+        # Validate the response structure
+        if not hasattr(response, 'choices') or not response.choices:
+            raise Exception("Invalid API response: 'choices' attribute missing or empty.")
+
         course_data = json.loads(response.choices[0].message.content)
         
+        # Validate that course_data is a dictionary
+        if not isinstance(course_data, dict):
+            raise Exception("Invalid course data format: Expected a dictionary, got: " + str(type(course_data)))
+
         # Validate that each PDF has modules
-        pdfs_with_modules = set(module.get('source_pdf', '') for module in course_data.get('modules', []))
+        modules = course_data.get('modules', [])
+        pdfs_with_modules = set(module.get('source_pdf', '') for module in modules)
         if len(pdfs_with_modules) != len(doc_chunks_by_pdf):
             st.warning("The generated course did not include modules for all PDFs. Adjusting the course structure...")
             # Fallback: If a PDF is missing modules, add placeholder modules (optional)
 
         # Validate module content
-        for module in course_data.get('modules', []):
+        for module in modules:
             content = module.get('content', '')
             bullet_points = [line.strip() for line in content.split('\n') if line.strip()]
             if len(bullet_points) < 5:
