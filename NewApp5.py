@@ -335,7 +335,7 @@ async def create_course_content():
         3. Writing a 300-word course description that summarizes the overall learning objectives.
         4. Developing exactly 2 modules for each PDF, ensuring that each module focuses exclusively on the content of its respective PDF. Do not mix content between PDFs. For {len(doc_chunks_by_pdf)} PDFs, this will result in {len(doc_chunks_by_pdf) * 2} total modules.
         5. Defining 4-6 learning objectives per module, specific to the PDF's content.
-        6. Summarizing the module content in 5-8 concise, digestible bullet points that directly help trainees answer the quiz questions. Each bullet point should be a clear, focused takeaway that connects to the quiz content and the specific PDF.
+        6. Summarizing the module content in 5-8 concise, digestible bullet points that directly help trainees answer the quiz questions. Each bullet point must be a complete sentence (10-20 words) and a clear, focused takeaway that connects to the quiz content and the specific PDF. For example, if a quiz question is "What is a key strategy for remote team engagement?", a bullet point should be: "Regular virtual check-ins are a key strategy for remote team engagement."
         7. Including 3-5 quiz questions per module, with each question directly related to the content of the module and the specific PDF.
 
         Return JSON:
@@ -372,12 +372,21 @@ async def create_course_content():
         
         course_data = json.loads(response.choices[0].message.content)
         
-        # Validate that each PDF has modules
+        # Validate that each PDF has modules and content is sufficient
         pdfs_with_modules = set(module.get('source_pdf', '') for module in course_data.get('modules', []))
         if len(pdfs_with_modules) != len(doc_chunks_by_pdf):
             st.warning("The generated course did not include modules for all PDFs. Adjusting the course structure...")
             # Fallback: If a PDF is missing modules, add placeholder modules (optional)
-            # For simplicity, we'll rely on the updated prompt to fix this, but you can add logic here if needed
+
+        # Validate module content
+        for module in course_data.get('modules', []):
+            content = module.get('content', '')
+            bullet_points = [line.strip() for line in content.split('\n') if line.strip()]
+            if len(bullet_points) < 5:
+                st.warning(f"Module '{module.get('title', 'Unknown')}' has fewer than 5 bullet points. Expected 5-8.")
+            for bp in bullet_points:
+                if len(bp.split()) < 10:
+                    st.warning(f"Bullet point in '{module.get('title', 'Unknown')}' is too short: '{bp}'. Expected 10-20 words.")
 
         st.session_state.course_data = course_data
         st.session_state.course_ready = True
