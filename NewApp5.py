@@ -290,6 +290,7 @@ def verify_answer(q_id, user_response, correct_response, options):
 def initiate_course_creation():
     st.session_state.generating = True
     st.session_state.course_ready = False
+    st.session_state.course_data = None
 
 # Course Content Generation
 async def create_course_content():
@@ -405,21 +406,34 @@ async def create_course_content():
         if not isinstance(course_data, dict):
             raise Exception("Invalid course data format: Expected a dictionary, got: " + str(type(course_data)))
 
+        # Debug: Inspect the course_data
+        st.write("**Debug: Course Data Generated:**")
+        st.json(course_data)
+
+        # Validate required fields
+        if not course_data.get('course_title') or not course_data.get('course_description') or not course_data.get('modules'):
+            raise Exception("Course data is missing required fields (course_title, course_description, or modules).")
+
         # Validate that each PDF has modules
         modules = course_data.get('modules', [])
+        if not modules:
+            raise Exception("No modules found in the generated course data.")
+
         pdfs_with_modules = set(module.get('source_pdf', '') for module in modules)
         if len(pdfs_with_modules) != len(doc_chunks_by_pdf):
             st.warning("The generated course did not include modules for all PDFs. Adjusting the course structure...")
-            # Fallback: If a PDF is missing modules, add placeholder modules (optional)
 
         # Validate module content
         for module in modules:
+            if not module.get('title') or not module.get('source_pdf') or not module.get('learning_objectives') or not module.get('content') or not module.get('quiz'):
+                raise Exception(f"Module is missing required fields: {module}")
             content = module.get('content', '')
             # Handle both string and list formats for content
             if isinstance(content, list):
                 content = "\n".join(str(item) for item in content)  # Convert list to string with newlines
             elif not isinstance(content, str):
                 content = "No content provided."  # Fallback for unexpected types
+            module['content'] = content  # Update the content to be a string
             bullet_points = [line.strip() for line in content.split('\n') if line.strip()]
             if len(bullet_points) < 5:
                 st.warning(f"Module '{module.get('title', 'Unknown')}' has fewer than 5 bullet points. Expected 5-8.")
@@ -446,6 +460,20 @@ async def create_course_content():
     finally:
         st.session_state.generating = False
 
+# Handle Course Generation Outside Tabs to Avoid Re-rendering Issues
+if 'create_course_clicked' not in st.session_state:
+    st.session_state.create_course_clicked = False
+
+if st.session_state.doc_chunks and api_key and not st.session_state.generating and not st.session_state.course_ready:
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🚀 Create Course", use_container_width=True):
+            st.session_state.create_course_clicked = True
+            initiate_course_creation()
+            with st.spinner("Crafting your course..."):
+                asyncio.run(create_course_content())
+            st.session_state.create_course_clicked = False
+
 # Main UI with Tabs
 tab_course, tab_queries, tab_docs = st.tabs(["📚 Course", "❓ Queries", "📑 Sources"])
 
@@ -453,70 +481,82 @@ with tab_course:
     if st.session_state.course_ready and st.session_state.course_data:
         # Display the generated course
         course = st.session_state.course_data
-        st.title(f"🌟 {course.get('course_title', 'Learning Course')}")
-        st.markdown(f"*Tailored for {selected_role}s focusing on {', '.join(selected_focus)}*")
-        st.write(course.get('course_description', ''))
+        if not course.get('course_title') or not course.get('course_description') or not course.get('modules'):
+            st.error("Course data is incomplete. Please try generating the course again.")
+        else:
+            st.title(f"🌟 {course.get('course_title', 'Learning Course')}")
+            st.markdown(f"*Tailored for {selected_role}s focusing on {', '.join(selected_focus)}*")
+            st.write(course.get('course_description', ''))
 
-        completed = len(st.session_state.answered_questions)
-        total = st.session_state.question_count
-        progress = (completed / total * 100) if total > 0 else 0
-        st.progress(progress / 100)
-        st.write(f"**Progress:** {completed}/{total} questions ({progress:.1f}%)")
+            completed = len(st.session_state.answered_questions)
+            total = st.session_state.question_count
+            progress = (completed / total * 100) if total > 0 else 0
+            st.progress(progress / 100)
+            st.write(f"**Progress:** {completed}/{total} questions ({progress:.1f}%)")
 
-        st.markdown("---")
-        st.subheader("📋 Course Outline")
-        modules = course.get('modules', [])
-        for i, module in enumerate(modules, 1):
-            source_pdf = module.get('source_pdf', 'Unknown PDF')
-            st.write(f"**Module {i}:** {module.get('title', f'Module {i}')} (Source: {source_pdf})")
+            st.markdown("---")
+            st.subheader("📋 Course Outline")
+            modules = course.get('modules', [])
+            if not modules:
+                st.warning("No modules found in the course data.")
+            for i, module in enumerate(modules, 1):
+                source_pdf = module.get('source_pdf', 'Unknown PDF')
+                st.write(f"**Module {i}:** {module.get('title', f'Module {i}')} (Source: {source_pdf})")
 
-        st.markdown("---")
-        for i, module in enumerate(modules, 1):
-            source_pdf = module.get('source_pdf', 'Unknown PDF')
-            with st.expander(f"📚 Module {i}: {module.get('title', f'Module {i}')} (Source: {source_pdf})"):
-                st.markdown("### 🎯 Objectives")
-                for obj in module.get('learning_objectives', []):
-                    st.markdown(f"- {obj}")
+            st.markdown("---")
+            for i, module in enumerate(modules, 1):
+                source_pdf = module.get('source_pdf', 'Unknown PDF')
+                with st.expander(f"📚 Module {i}: {module.get('title', f'Module {i}')} (Source: {source_pdf})"):
+                    st.markdown("### 🎯 Objectives")
+                    objectives = module.get('learning_objectives', [])
+                    if not objectives:
+                        st.warning("No learning objectives defined for this module.")
+                    for obj in objectives:
+                        st.markdown(f"- {obj}")
 
-                st.markdown("### 📖 Content")
-                content_value = module.get('content', '')
-                if isinstance(content_value, list):
-                    content = content_value  # Already a list of bullet points
-                else:
-                    content = content_value.split('\n') if isinstance(content_value, str) else []
-                for line in content:
-                    if line.strip():
-                        st.markdown(f"• {line}" if not line.startswith(('- ', '* ', '• ')) else line)
+                    st.markdown("### 📖 Content")
+                    content_value = module.get('content', '')
+                    if isinstance(content_value, list):
+                        content = content_value  # Already a list of bullet points
+                    else:
+                        content = content_value.split('\n') if isinstance(content_value, str) else []
+                    if not content:
+                        st.warning("No content available for this module.")
+                    for line in content:
+                        if line.strip():
+                            st.markdown(f"• {line}" if not line.startswith(('- ', '* ', '• ')) else line)
 
-                st.markdown("### 💡 Takeaways")
-                st.info("Apply these skills in your professional role for immediate impact.")
+                    st.markdown("### 💡 Takeaways")
+                    st.info("Apply these skills in your professional role for immediate impact.")
 
-                st.markdown("### 📝 Quiz")
-                for q_idx, q in enumerate(module.get('quiz', {}).get('questions', []), 1):
-                    q_id = f"mod_{i}_q_{q_idx}"
-                    st.markdown(f"**Question {q_idx}:** {q.get('question', '')}")
-                    options = q.get('options', [])
-                    correct_response = q.get('correct_answer', '')
-                    if options:
-                        option_key = f"quiz_{i}_{q_idx}"
-                        user_answer = st.radio("Choose:", options, key=option_key)
-                        submit_key = f"submit_{i}_{q_idx}"
-                        if q_id in st.session_state.answered_questions:
-                            if st.session_state.get(f"correct_{q_id}", False):
-                                st.success("✓ Correct!")
-                            else:
-                                # Map the correct_response to the full text for display
-                                option_mapping = {"A": 0, "B": 1, "C": 2, "D": 3}
-                                correct_option_text = options[option_mapping.get(correct_response, 0)] if correct_response in option_mapping else correct_response
-                                st.error(f"Incorrect. Correct answer: {correct_option_text}")
-                        elif st.button("Check", key=submit_key):
-                            verify_answer(q_id, user_answer, correct_response, options)
-                    st.markdown("---")
+                    st.markdown("### 📝 Quiz")
+                    quiz_questions = module.get('quiz', {}).get('questions', [])
+                    if not quiz_questions:
+                        st.warning("No quiz questions available for this module.")
+                    for q_idx, q in enumerate(quiz_questions, 1):
+                        q_id = f"mod_{i}_q_{q_idx}"
+                        st.markdown(f"**Question {q_idx}:** {q.get('question', '')}")
+                        options = q.get('options', [])
+                        correct_response = q.get('correct_answer', '')
+                        if options:
+                            option_key = f"quiz_{i}_{q_idx}"
+                            user_answer = st.radio("Choose:", options, key=option_key)
+                            submit_key = f"submit_{i}_{q_idx}"
+                            if q_id in st.session_state.answered_questions:
+                                if st.session_state.get(f"correct_{q_id}", False):
+                                    st.success("✓ Correct!")
+                                else:
+                                    # Map the correct_response to the full text for display
+                                    option_mapping = {"A": 0, "B": 1, "C": 2, "D": 3}
+                                    correct_option_text = options[option_mapping.get(correct_response, 0)] if correct_response in option_mapping else correct_response
+                                    st.error(f"Incorrect. Correct answer: {correct_option_text}")
+                            elif st.button("Check", key=submit_key):
+                                verify_answer(q_id, user_answer, correct_response, options)
+                        st.markdown("---")
     elif st.session_state.generating:
         # Display loading state
         st.title("Generating Your Course...")
         st.info("Please wait while the course is being created. This may take a few moments.")
-        # The actual generation happens below in the button click handler
     else:
         # Display welcome screen
         st.title("Advanced Learning Hub")
@@ -533,15 +573,6 @@ with tab_course:
 
         Start your learning journey now!
         """)
-        if st.session_state.doc_chunks and api_key and not st.session_state.generating:
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                if st.button("🚀 Create Course", use_container_width=True):
-                    initiate_course_creation()
-                    st.session_state.answered_questions = set()
-                    with st.spinner("Crafting your course..."):
-                        asyncio.run(create_course_content())
-                    # No st.rerun() here; let create_course_content handle the state
 
 with tab_queries:
     st.title("💬 Queries")
