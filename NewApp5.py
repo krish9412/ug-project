@@ -10,7 +10,7 @@ import requests
 from typing import List, Dict, Any
 from collections import defaultdict
 import re
-from langchain.vectorstores import Chroma
+from langchain.vectorstores import Chroma  # For langchain==0.0.348; for newer versions, use: from langchain_community.vectorstores import Chroma
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
