@@ -1,15 +1,7 @@
 import streamlit as st
-import os
-import tempfile
-import json
-import io
-import requests
 import pdfplumber
-import uuid
-import numpy as np
+import json
 from openai import OpenAI
-from sentence_transformers import SentenceTransformer
-import faiss
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from datetime import datetime
@@ -27,10 +19,8 @@ def init_session_state():
         'question_count': 0,
         'pdf_texts': [],
         'training_queries': [],
-        'session_uuid': str(uuid.uuid4()),
         'uploaded_pdfs': [],
         'pdf_filenames': [],
-        'feedback_log': []
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -48,7 +38,7 @@ if st.sidebar.button("🔄 Reset System"):
     init_session_state()
     st.rerun()
 
-# Simulated Secure API Key Handling (Replace with secrets.toml in production)
+# Simulated Secure API Key Handling
 openai_api_key = st.sidebar.text_input("🔑 Enter OpenAI API Key", type="password")
 if openai_api_key:
     try:
@@ -71,7 +61,7 @@ def validate_pdf(file):
         return False
     return True
 
-# Define extract_pdf_content
+# Extract Text from PDF
 def extract_pdf_content(pdf_file):
     try:
         pdf_file.seek(0)
@@ -82,15 +72,7 @@ def extract_pdf_content(pdf_file):
         st.error(f"Error processing {pdf_file.name}: {e}")
         return ""
 
-# Define chunk_text Before It's Called (Fix for NameError)
-def chunk_text(text, chunk_size=500):
-    words = text.split()
-    chunks = []
-    for i in range(0, len(words), chunk_size):
-        chunks.append(" ".join(words[i:i+chunk_size]))
-    return chunks
-
-# PDF Uploader Block (Calls extract_pdf_content and chunk_text)
+# PDF Uploader Block
 uploaded_pdfs = st.sidebar.file_uploader("📝 Upload Training PDFs", type=['pdf'], accept_multiple_files=True)
 if uploaded_pdfs and st.session_state['api_key_valid']:
     current_filenames = [pdf.name for pdf in uploaded_pdfs]
@@ -105,29 +87,13 @@ if uploaded_pdfs and st.session_state['api_key_valid']:
                     if text:
                         st.session_state['pdf_texts'].append({
                             'filename': pdf.name,
-                            'text': text,
-                            'chunks': chunk_text(text)  # Line 181: Now chunk_text is defined above
+                            'text': text
                         })
                         st.session_state['uploaded_pdfs'].append(pdf)
         if st.session_state['pdf_texts']:
             st.sidebar.success(f"✅ {len(st.session_state['pdf_texts'])} PDFs processed!")
 else:
     st.info("📥 Enter a valid OpenAI API key and upload PDFs to start.")
-
-# Initialize Vector Search
-@st.cache_resource
-def init_vector_search():
-    model = SentenceTransformer('all-MiniLM-L6-v2')
-    index = faiss.IndexFlatL2(384)  # Dimension of MiniLM embeddings
-    return model, index
-
-if st.session_state['pdf_texts']:
-    embed_model, faiss_index = init_vector_search()
-    for doc in st.session_state['pdf_texts']:
-        if 'embeddings' not in doc:
-            embeddings = embed_model.encode(doc['chunks'])
-            doc['embeddings'] = embeddings
-            faiss_index.add(np.array(embeddings, dtype='float32'))
 
 # Model and Role Selection
 model_choices = ["gpt-4o-mini", "gpt-4o", "gpt-4"]
@@ -144,23 +110,18 @@ if st.session_state['pdf_filenames']:
     for i, fname in enumerate(st.session_state['pdf_filenames'], 1):
         st.sidebar.text(f"{i}. {fname}")
 
-# RAG with Vector Search
-def rag_answer_query(query, docs, course_data=None, top_k=3):
+# Simple RAG without Vector Search
+def rag_answer_query(query, docs, course_data=None):
     if not st.session_state['api_key_valid']:
         return "Valid API key required."
     if not docs:
         return "No documents available. Upload PDFs first."
     
     try:
-        # Vector search for relevant chunks
-        query_embedding = embed_model.encode([query])[0]
-        distances, indices = faiss_index.search(np.array([query_embedding], dtype='float32'), top_k)
+        # Simple text-based retrieval
         context = ""
-        for idx in indices[0]:
-            doc_idx = idx // 100  # Approximate document index
-            chunk_idx = idx % 100
-            if doc_idx < len(docs) and chunk_idx < len(docs[doc_idx]['chunks']):
-                context += f"\nDocument {docs[doc_idx]['filename']}:\n{docs[doc_idx]['chunks'][chunk_idx]}\n"
+        for doc in docs:
+            context += f"\nDocument {doc['filename']}:\n{doc['text'][:2000]}\n"
         
         # Course context
         course_context = ""
@@ -188,30 +149,9 @@ def rag_answer_query(query, docs, course_data=None, top_k=3):
             temperature=0.6
         )
         answer = response.choices[0].message.content
-        
-        # Log feedback
-        with st.container():
-            st.write(answer)
-            feedback = st.radio("Rate this answer:", ["👍 Good", "👎 Needs Improvement"], key=f"feedback_{query}_{st.session_state['session_uuid']}")
-            if feedback:
-                log_feedback(query, answer, feedback)
-        
         return answer
     except Exception as e:
         return f"Error generating response: {str(e)}"
-
-# Log Feedback
-def log_feedback(query, answer, rating):
-    feedback_entry = {
-        'timestamp': datetime.now().isoformat(),
-        'query': query,
-        'answer': answer[:100],
-        'rating': rating,
-        'session': st.session_state['session_uuid']
-    }
-    st.session_state['feedback_log'].append(feedback_entry)
-    with open('feedback_log.json', 'w') as f:
-        json.dump(st.session_state['feedback_log'], f, indent=2)
 
 # Check Quiz Answer
 def verify_answer(qid, user_choice, correct_choice):
