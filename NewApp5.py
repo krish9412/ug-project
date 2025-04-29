@@ -108,7 +108,7 @@ def create_faiss_index(embeddings):
         return None
     dimension = len(embeddings[0])
     index = faiss.IndexFlatL2(dimension)
-    index.add(np.array(embeddings))
+    index.add(np.array(embeddings).astype('float32'))
     return index
 
 # Process Uploaded PDFs
@@ -173,7 +173,7 @@ def retrieve_relevant_chunks(query, index, embeddings, chunks, k=3):
     query_embedding = generate_embeddings([query], api_key)
     if not query_embedding:
         return []
-    distances, indices = index.search(np.array([query_embedding[0]]), k)
+    distances, indices = index.search(np.array([query_embedding[0]]).astype('float32'), k)
     return [chunks[i] for i in indices[0]]
 
 # RAG Answer Generation
@@ -182,20 +182,20 @@ def generate_answer(query, chunks, course_data=None):
         return "API key required."
     if not chunks:
         return "No relevant document chunks found to summarize."
-    
+
     # Build context from retrieved chunks
     context = ""
     for i, chunk in enumerate(chunks[:3], 1):
         context += f"Document {i} ({chunk['metadata']['filename']}):\n{chunk['text'][:2000]}\n\n"
-    
+
     # Check if the retrieved chunks are relevant to the query
     query_lower = query.lower()
     context_lower = context.lower()
-    relevant = any(word in context_lower for word in query_lower.split() if len(word) > 3)  # Basic relevance check
-    
+    relevant = any(word in context_lower for word in query_lower.split() if len(word) > 3)
+
     if not relevant:
         return "Unable to generate a summary due to lack of relevant content in the provided documents."
-    
+
     # Build course context if available
     course_context = ""
     if course_data:
@@ -210,7 +210,7 @@ def generate_answer(query, chunks, course_data=None):
             Objectives: {', '.join(module.get('learning_objectives', []))}
             Content: {module.get('content', '')[:200]}...
             """
-    
+
     # Updated prompt to enforce strict context usage
     prompt = f"""
     You are a learning assistant. Your task is to provide a detailed answer to the following question based EXCLUSIVELY on the provided document context and course information. Do NOT use any external knowledge or assumptions beyond what is explicitly stated in the context. If the information is not available in the context, return a placeholder summary stating that the content is insufficient.
@@ -223,7 +223,7 @@ def generate_answer(query, chunks, course_data=None):
 
     Answer strictly based on the provided context, citing specific documents where applicable. If the information is insufficient, return: "Insufficient content to generate a detailed summary."
     """
-    
+
     try:
         client = OpenAI(api_key=api_key)
         response = client.chat.completions.create(
@@ -257,7 +257,7 @@ if st.sidebar.button("Add Query"):
                 )
         else:
             answer = "Please upload documents to enable query answering."
-        
+
         st.session_state.queries.append({
             "query": query_input,
             "response": answer,
@@ -268,21 +268,20 @@ if st.sidebar.button("Add Query"):
 
 # Answer Verification
 def verify_answer(q_id, user_response, correct_response, options):
-    # Map the correct_response (e.g., "B") to the corresponding option text
     option_mapping = {"A": 0, "B": 1, "C": 2, "D": 3}
     if correct_response in option_mapping:
         correct_option_index = option_mapping[correct_response]
         correct_option_text = options[correct_option_index]
     else:
-        correct_option_text = correct_response  # Fallback in case correct_response is already the full text
+        correct_option_text = correct_response
 
     if user_response == correct_option_text:
         st.session_state.answered_questions.add(q_id)
-        st.session_state[f"correct_{q_id}"] = True  # Track correct answers
+        st.session_state[f"correct_{q_id}"] = True
         st.success("✅ Correct!")
         return True
     else:
-        st.session_state[f"correct_{q_id}"] = False  # Track incorrect answers
+        st.session_state[f"correct_{q_id}"] = False
         st.error(f"Incorrect. Correct answer: {correct_option_text}")
         return False
 
@@ -295,11 +294,8 @@ def initiate_course_creation():
 # Course Content Generation
 async def create_course_content():
     try:
-        # Debugging: Log start of the process
         st.info("Starting course generation process...")
 
-        # Group chunks by PDF filename
-        st.info("Grouping document chunks by PDF...")
         doc_chunks_by_pdf = {}
         for chunk in st.session_state.doc_chunks:
             filename = chunk['metadata']['filename']
@@ -307,48 +303,43 @@ async def create_course_content():
                 doc_chunks_by_pdf[filename] = []
             doc_chunks_by_pdf[filename].append(chunk)
 
-        # Build context and summary for each PDF
         st.info("Building context and summaries for each PDF...")
         doc_context = ""
         pdf_summaries = []
         for i, (filename, chunks) in enumerate(doc_chunks_by_pdf.items(), 1):
-            pdf_content = "\n".join(chunk['text'][:2000] for chunk in chunks)  # Limit to 2000 chars per PDF
+            pdf_content = "\n".join(chunk['text'][:2000] for chunk in chunks)
             doc_context += f"\n--- Document {i}: {filename} ---\n{pdf_content}\n"
 
-            # Generate a summary for this specific PDF
             pdf_chunks = [chunk for chunk in chunks]
             summary_query = f"Summarize the key concepts, theories, and applications from the document '{filename}'."
-            summary_chunks = pdf_chunks  # Use only chunks from this PDF
+            summary_chunks = pdf_chunks
             pdf_summary = generate_answer(summary_query, summary_chunks)
-            # Ensure pdf_summary is a string
             if not isinstance(pdf_summary, str):
                 pdf_summary = "Unable to generate summary due to unexpected response format."
             pdf_summaries.append(f"Summary of {filename}: {pdf_summary}")
 
-        # Combine summaries for the prompt
         doc_summary = "\n".join(pdf_summaries)
 
         role_context = f"Role: {selected_role}, Focus: {', '.join(selected_focus)}"
 
-        # Truncate doc_context and doc_summary to avoid exceeding API limits
-        doc_context = doc_context[:4000]  # Total limit
-        doc_summary = doc_summary[:1500]  # Total summary limit
+        doc_context = doc_context[:4000]
+        doc_summary = doc_summary[:1500]
 
         prompt = f"""
-        Create a professional learning course for an employee training system based on multiple documents. Each document represents a separate PDF file, provided below.
+        Create a professional learning course based on multiple documents. The documents are provided below, with each document representing a separate PDF file.
 
         Context: {role_context}
         Document Summaries: {doc_summary}
         Documents: {doc_context}
 
         Design a course by:
-        1. Analyzing each document (PDF) separately to identify its themes, insights, and practical applications.
+        1. Analyzing each document (PDF) separately to identify its themes and insights.
         2. Crafting an inspiring course title that reflects the combined focus of all documents.
-        3. Writing a 300-word course description that summarizes the overall learning objectives and their relevance to employee training.
-        4. Developing exactly 2 modules for each PDF, ensuring each module focuses exclusively on the content of its respective PDF. Do not mix content between PDFs. For {len(doc_chunks_by_pdf)} PDFs, this will result in {len(doc_chunks_by_pdf) * 2} total modules.
-        5. Defining 4-6 learning objectives per module, specific to the PDF's content and aligned with employee training goals.
-        6. Summarizing the module content in 6-10 detailed, digestible bullet points that directly help trainees answer the quiz questions. Each bullet point must be a complete sentence (15-25 words), providing a clear, focused, and practical takeaway that connects to the quiz content and the specific PDF. For example, if a quiz question is "What is a key strategy for remote team engagement?", a bullet point should be: "Regular virtual check-ins with structured agendas enhance remote team engagement by fostering communication and collaboration."
-        7. Including 3-5 quiz questions per module, with each question directly related to the module content and the specific PDF, designed to reinforce key training concepts.
+        3. Writing a 300-word course description that summarizes the overall learning objectives.
+        4. Developing exactly 2 modules for each PDF, ensuring that each module focuses exclusively on the content of its respective PDF. Do not mix content between PDFs. For {len(doc_chunks_by_pdf)} PDFs, this will result in {len(doc_chunks_by_pdf) * 2} total modules.
+        5. Defining 4-6 learning objectives per module, specific to the PDF's content.
+        6. Summarizing the module content in 5-8 concise, digestible bullet points that directly help trainees answer the quiz questions. Each bullet point must be a complete sentence (10-20 words) and a clear, focused takeaway that connects to the quiz content and the specific PDF. For example, if a quiz question is "What is a key strategy for remote team engagement?", a bullet point should be: "Regular virtual check-ins are a key strategy for remote team engagement."
+        7. Including 3-5 quiz questions per module, with each question directly related to the content of the module and the specific PDF.
 
         Return JSON:
         {{
@@ -359,13 +350,13 @@ async def create_course_content():
                     "title": "Module Title",
                     "source_pdf": "Filename of the PDF",
                     "learning_objectives": ["Obj1", "Obj2"],
-                    "content": "Bullet-point content",
+                    "content": ["Bullet point 1", "Bullet point 2"],
                     "quiz": {{
                         "questions": [
                             {{
                                 "question": "Text",
                                 "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
-                                "correct_answer": "Option 2"  # Use the full text of the correct option
+                                "correct_answer": "Option 2"
                             }}
                         ]
                     }}
@@ -373,11 +364,9 @@ async def create_course_content():
             ]
         }}
         """
-        
-        # Debugging: Log before API call
+
         st.info("Calling OpenAI API to generate course content...")
 
-        # Add timeout for the API call
         client = OpenAI(api_key=api_key)
         try:
             response = await asyncio.wait_for(
@@ -388,21 +377,18 @@ async def create_course_content():
                     response_format={"type": "json_object"},
                     temperature=0.7
                 ),
-                timeout=300  # 5-minute timeout
+                timeout=300
             )
         except asyncio.TimeoutError:
             raise Exception("OpenAI API call timed out after 5 minutes. Please try again or use a smaller PDF.")
 
-        # Debugging: Log after API call
         st.info("Received response from OpenAI API. Processing...")
 
-        # Validate the response structure
         if not hasattr(response, 'choices') or not response.choices:
             raise Exception("Invalid API response: 'choices' attribute missing or empty.")
 
         course_data = json.loads(response.choices[0].message.content)
-        
-        # Validate that course_data is a dictionary
+
         if not isinstance(course_data, dict):
             raise Exception("Invalid course data format: Expected a dictionary, got: " + str(type(course_data)))
 
@@ -414,178 +400,4 @@ async def create_course_content():
         if not course_data.get('course_title') or not course_data.get('course_description') or not course_data.get('modules'):
             raise Exception("Course data is missing required fields (course_title, course_description, or modules).")
 
-        # Validate that each PDF has modules
-        modules = course_data.get('modules', [])
-        if not modules:
-            raise Exception("No modules found in the generated course data.")
-
-        pdfs_with_modules = set(module.get('source_pdf', '') for module in modules)
-        if len(pdfs_with_modules) != len(doc_chunks_by_pdf):
-            st.warning("The generated course did not include modules for all PDFs. Adjusting the course structure...")
-
-        # Validate module content
-        for module in modules:
-            if not module.get('title') or not module.get('source_pdf') or not module.get('learning_objectives') or not module.get('content') or not module.get('quiz'):
-                raise Exception(f"Module is missing required fields: {module}")
-            content = module.get('content', '')
-            st.write(f"Debug: Content before processing: {type(content)} {content}")
-            if isinstance(content, list):
-                # Flatten the list if it's nested
-                if any(isinstance(item, list) for item in content):
-                    content = [item for sublist in content for item in (sublist if isinstance(sublist, list) else [sublist])]
-                content = "\n".join(str(item) for item in content)
-            elif not isinstance(content, str):
-                content = "No content provided."
-            st.write(f"Debug: Content after processing: {type(content)} {content}")
-            if not isinstance(content, str):
-                st.error(f"Content is not a string after processing: {type(content)} {content}")
-                continue
-            bullet_points = [line.strip() for line in content.split('\n') if line.strip()]
-            if len(bullet_points) < 6:
-                st.warning(f"Module '{module.get('title', 'Unknown')}' has fewer than 6 bullet points. Expected 6-10.")
-            for bp in bullet_points:
-                word_count = len(bp.split())
-                if word_count < 15 or word_count > 25:
-                    st.warning(f"Bullet point in '{module.get('title', 'Unknown')}' has {word_count} words: '{bp}'. Expected 15-25 words.")
-
-        st.session_state.course_data = course_data
-        st.session_state.course_ready = True
-
-        total_questions = sum(
-            len(module.get('quiz', {}).get('questions', []))
-            for module in course_data.get('modules', [])
-        )
-        st.session_state.question_count = total_questions
-
-        st.success("✅ Course created successfully!")
-
-    except Exception as e:
-        st.error(f"Course creation failed: {str(e)}")
-        # Ensure the generating flag is reset even on error
-        st.session_state.generating = False
-        st.session_state.course_ready = False
-    finally:
-        st.session_state.generating = False
-
-# Handle Course Generation Outside Tabs to Avoid Re-rendering Issues
-if 'create_course_clicked' not in st.session_state:
-    st.session_state.create_course_clicked = False
-
-if st.session_state.doc_chunks and api_key and not st.session_state.generating and not st.session_state.course_ready:
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if st.button("🚀 Create Course", use_container_width=True):
-            st.session_state.create_course_clicked = True
-            initiate_course_creation()
-            with st.spinner("Crafting your course..."):
-                asyncio.run(create_course_content())
-            st.session_state.create_course_clicked = False
-
-# Main UI with Tabs
-tab_course, tab_queries, tab_docs = st.tabs(["📚 Course", "❓ Queries", "📑 Sources"])
-
-with tab_course:
-    if st.session_state.course_ready and st.session_state.course_data:
-        # Display the generated course
-        course = st.session_state.course_data
-        if not course.get('course_title') or not course.get('course_description') or not course.get('modules'):
-            st.error("Course data is incomplete. Please try generating the course again.")
-        else:
-            st.title(f"🌟 {course.get('course_title', 'Learning Course')}")
-            st.markdown(f"*Tailored for {selected_role}s focusing on {', '.join(selected_focus)}*")
-            st.write(course.get('course_description', ''))
-
-            completed = len(st.session_state.answered_questions)
-            total = st.session_state.question_count
-            progress = (completed / total * 100) if total > 0 else 0
-            st.progress(progress / 100)
-            st.write(f"**Progress:** {completed}/{total} questions ({progress:.1f}%)")
-
-            st.markdown("---")
-            st.subheader("📋 Course Outline")
-            modules = course.get('modules', [])
-            if not modules:
-                st.warning("No modules found in the course data.")
-            for i, module in enumerate(modules, 1):
-                source_pdf = module.get('source_pdf', 'Unknown PDF')
-                st.write(f"**Module {i}:** {module.get('title', f'Module {i}')} (Source: {source_pdf})")
-
-            st.markdown("---")
-            for i, module in enumerate(modules, 1):
-                source_pdf = module.get('source_pdf', 'Unknown PDF')
-                with st.expander(f"📚 Module {i}: {module.get('title', f'Module {i}')} (Source: {source_pdf})"):
-                    st.markdown("### 🎯 Objectives")
-                    objectives = module.get('learning_objectives', [])
-                    if not objectives:
-                        st.warning("No learning objectives defined for this module.")
-                    for obj in objectives:
-                        st.markdown(f"- {obj}")
-
-                    st.markdown("### 📖 Content")
-                    content_value = module.get('content', '')
-                    if isinstance(content_value, list):
-                        content = content_value  # Already a list of bullet points
-                    else:
-                        content = content_value.split('\n') if isinstance(content_value, str) else []
-                    if not content:
-                        st.warning("No content available for this module.")
-                    for line in content:
-                        if line.strip():
-                            st.markdown(f"• {line}" if not line.startswith(('- ', '* ', '• ')) else line)
-
-                    st.markdown("### 💡 Takeaways")
-                    st.info("Apply these skills in your professional role for immediate impact.")
-
-                    st.markdown("### 📝 Quiz")
-                    quiz_questions = module.get('quiz', {}).get('questions', [])
-                    if not quiz_questions:
-                        st.warning("No quiz questions available for this module.")
-                    for q_idx, q in enumerate(quiz_questions, 1):
-                        q_id = f"mod_{i}_q_{q_idx}"
-                        st.markdown(f"**Question {q_idx}:** {q.get('question', '')}")
-                        options = q.get('options', [])
-                        correct_response = q.get('correct_answer', '')
-                        if options:
-                            option_key = f"quiz_{i}_{q_idx}"
-                            user_answer = st.radio("Choose:", options, key=option_key)
-                            submit_key = f"submit_{i}_{q_idx}"
-                            if q_id in st.session_state.answered_questions:
-                                if st.session_state.get(f"correct_{q_id}", False):
-                                    st.success("✓ Correct!")
-                                else:
-                                    # Map the correct_response to the full text for display
-                                    option_mapping = {"A": 0, "B": 1, "C": 2, "D": 3}
-                                    correct_option_text = options[option_mapping.get(correct_response, 0)] if correct_response in option_mapping else correct_response
-                                    st.error(f"Incorrect. Correct answer: {correct_option_text}")
-                            elif st.button("Check", key=submit_key):
-                                verify_answer(q_id, user_answer, correct_response, options)
-                        st.markdown("---")
-    elif st.session_state.generating:
-        # Display loading state
-        st.title("Generating Your Course...")
-        st.info("Please wait while the course is being created. This may take a few moments.")
-    else:
-        # Display welcome screen
-        st.title("Advanced Learning Hub")
-        st.markdown("""
-        ## Elevate Your Skills with AI-Driven Learning
-
-        Upload training PDFs, and I'll craft a tailored course integrating all materials.
-
-        ### Steps:
-        1. Input your OpenAI API key
-        2. Select your role and focus areas
-        3. Upload PDFs
-        4. Generate a custom course
-
-        Start your learning journey now!
-        """)
-
-with tab_queries:
-    st.title("💬 Queries")
-    st.markdown("Submit questions to get AI-generated answers based on uploaded documents.")
-    if not st.session_state.queries:
-        st.info("No queries submitted. Use the sidebar to add one.")
-    else:
-        for i, query in enumerate(st.session_state.queries, 1):
-            with st.expander(f"Query {i}: {query['query'][:50]}..." if len(query['query']) > 50 else
+        # Validate
