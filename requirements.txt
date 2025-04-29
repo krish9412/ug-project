@@ -1,5 +1,8 @@
 streamlit
 pymupdf
 numpy
-faiss-cpu
-openai
+pdfplumber
+requests
+chromadb
+langchain
+tiktoken
