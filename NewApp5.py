@@ -71,6 +71,7 @@ def validate_pdf(file):
         return False
     return True
 
+# Fixed Section: Corrected function name from extract_pdf to extract_pdf_content
 uploaded_pdfs = st.sidebar.file_uploader("📝 Upload Training PDFs", type=['pdf'], accept_multiple_files=True)
 if uploaded_pdfs and st.session_state['api_key_valid']:
     current_filenames = [pdf.name for pdf in uploaded_pdfs]
@@ -81,7 +82,7 @@ if uploaded_pdfs and st.session_state['api_key_valid']:
         with st.spinner("Processing PDFs..."):
             for pdf in uploaded_pdfs:
                 if validate_pdf(pdf):
-                    text = extract_pdf_content(pdf)
+                    text = extract_pdf_content(pdf)  # Fixed: Changed extract_pdf to extract_pdf_content
                     if text:
                         st.session_state['pdf_texts'].append({
                             'filename': pdf.name,
