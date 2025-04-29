@@ -71,7 +71,7 @@ def validate_pdf(file):
         return False
     return True
 
-# Define extract_pdf_content Before It's Called (Fix for NameError)
+# Define extract_pdf_content
 def extract_pdf_content(pdf_file):
     try:
         pdf_file.seek(0)
@@ -82,7 +82,15 @@ def extract_pdf_content(pdf_file):
         st.error(f"Error processing {pdf_file.name}: {e}")
         return ""
 
-# PDF Uploader Block (Calls extract_pdf_content)
+# Define chunk_text Before It's Called (Fix for NameError)
+def chunk_text(text, chunk_size=500):
+    words = text.split()
+    chunks = []
+    for i in range(0, len(words), chunk_size):
+        chunks.append(" ".join(words[i:i+chunk_size]))
+    return chunks
+
+# PDF Uploader Block (Calls extract_pdf_content and chunk_text)
 uploaded_pdfs = st.sidebar.file_uploader("📝 Upload Training PDFs", type=['pdf'], accept_multiple_files=True)
 if uploaded_pdfs and st.session_state['api_key_valid']:
     current_filenames = [pdf.name for pdf in uploaded_pdfs]
@@ -93,26 +101,18 @@ if uploaded_pdfs and st.session_state['api_key_valid']:
         with st.spinner("Processing PDFs..."):
             for pdf in uploaded_pdfs:
                 if validate_pdf(pdf):
-                    text = extract_pdf_content(pdf)  # Ensure this function is defined above
+                    text = extract_pdf_content(pdf)
                     if text:
                         st.session_state['pdf_texts'].append({
                             'filename': pdf.name,
                             'text': text,
-                            'chunks': chunk_text(text)
+                            'chunks': chunk_text(text)  # Line 181: Now chunk_text is defined above
                         })
                         st.session_state['uploaded_pdfs'].append(pdf)
         if st.session_state['pdf_texts']:
             st.sidebar.success(f"✅ {len(st.session_state['pdf_texts'])} PDFs processed!")
 else:
     st.info("📥 Enter a valid OpenAI API key and upload PDFs to start.")
-
-# Chunk Text for Vector Search
-def chunk_text(text, chunk_size=500):
-    words = text.split()
-    chunks = []
-    for i in range(0, len(words), chunk_size):
-        chunks.append(" ".join(words[i:i+chunk_size]))
-    return chunks
 
 # Initialize Vector Search
 @st.cache_resource
@@ -252,7 +252,7 @@ def create_training_course():
         - Detailed module content as 10-15 bullet points with actionable insights
         - 3-5 quiz questions per module testing key concepts
         
-issões        Return JSON:
+        Return JSON:
         {{
             "course_title": "",
             "course_description": "",
