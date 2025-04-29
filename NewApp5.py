@@ -415,6 +415,11 @@ async def create_course_content():
         # Validate module content
         for module in modules:
             content = module.get('content', '')
+            # Handle both string and list formats for content
+            if isinstance(content, list):
+                content = "\n".join(str(item) for item in content)  # Convert list to string with newlines
+            elif not isinstance(content, str):
+                content = "No content provided."  # Fallback for unexpected types
             bullet_points = [line.strip() for line in content.split('\n') if line.strip()]
             if len(bullet_points) < 5:
                 st.warning(f"Module '{module.get('title', 'Unknown')}' has fewer than 5 bullet points. Expected 5-8.")
@@ -446,6 +451,7 @@ tab_course, tab_queries, tab_docs = st.tabs(["📚 Course", "❓ Queries", "📑
 
 with tab_course:
     if st.session_state.course_ready and st.session_state.course_data:
+        # Display the generated course
         course = st.session_state.course_data
         st.title(f"🌟 {course.get('course_title', 'Learning Course')}")
         st.markdown(f"*Tailored for {selected_role}s focusing on {', '.join(selected_focus)}*")
@@ -474,7 +480,10 @@ with tab_course:
 
                 st.markdown("### 📖 Content")
                 content_value = module.get('content', '')
-                content = content_value.split('\n') if isinstance(content_value, str) else []
+                if isinstance(content_value, list):
+                    content = content_value  # Already a list of bullet points
+                else:
+                    content = content_value.split('\n') if isinstance(content_value, str) else []
                 for line in content:
                     if line.strip():
                         st.markdown(f"• {line}" if not line.startswith(('- ', '* ', '• ')) else line)
@@ -503,7 +512,13 @@ with tab_course:
                         elif st.button("Check", key=submit_key):
                             verify_answer(q_id, user_answer, correct_response, options)
                     st.markdown("---")
+    elif st.session_state.generating:
+        # Display loading state
+        st.title("Generating Your Course...")
+        st.info("Please wait while the course is being created. This may take a few moments.")
+        # The actual generation happens below in the button click handler
     else:
+        # Display welcome screen
         st.title("Advanced Learning Hub")
         st.markdown("""
         ## Elevate Your Skills with AI-Driven Learning
