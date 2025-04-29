@@ -108,7 +108,7 @@ def create_faiss_index(embeddings):
         return None
     dimension = len(embeddings[0])
     index = faiss.IndexFlatL2(dimension)
-    index.add(np.array(embeddings))
+    index.add(np.array(embeddings).astype('float32'))
     return index
 
 # Process Uploaded PDFs
@@ -173,7 +173,7 @@ def retrieve_relevant_chunks(query, index, embeddings, chunks, k=3):
     query_embedding = generate_embeddings([query], api_key)
     if not query_embedding:
         return []
-    distances, indices = index.search(np.array([query_embedding[0]]), k)
+    distances, indices = index.search(np.array([query_embedding[0]]).astype('float32'), k)
     return [chunks[i] for i in indices[0]]
 
 # RAG Answer Generation
@@ -182,20 +182,20 @@ def generate_answer(query, chunks, course_data=None):
         return "API key required."
     if not chunks:
         return "No relevant document chunks found to summarize."
-    
+
     # Build context from retrieved chunks
     context = ""
     for i, chunk in enumerate(chunks[:3], 1):
         context += f"Document {i} ({chunk['metadata']['filename']}):\n{chunk['text'][:2000]}\n\n"
-    
+
     # Check if the retrieved chunks are relevant to the query
     query_lower = query.lower()
     context_lower = context.lower()
-    relevant = any(word in context_lower for word in query_lower.split() if len(word) > 3)  # Basic relevance check
-    
+    relevant = any(word in context_lower for word in query_lower.split() if len(word) > 3)
+
     if not relevant:
         return "Unable to generate a summary due to lack of relevant content in the provided documents."
-    
+
     # Build course context if available
     course_context = ""
     if course_data:
@@ -210,7 +210,7 @@ def generate_answer(query, chunks, course_data=None):
             Objectives: {', '.join(module.get('learning_objectives', []))}
             Content: {module.get('content', '')[:200]}...
             """
-    
+
     # Updated prompt to enforce strict context usage
     prompt = f"""
     You are a learning assistant. Your task is to provide a detailed answer to the following question based EXCLUSIVELY on the provided document context and course information. Do NOT use any external knowledge or assumptions beyond what is explicitly stated in the context. If the information is not available in the context, return a placeholder summary stating that the content is insufficient.
@@ -223,7 +223,7 @@ def generate_answer(query, chunks, course_data=None):
 
     Answer strictly based on the provided context, citing specific documents where applicable. If the information is insufficient, return: "Insufficient content to generate a detailed summary."
     """
-    
+
     try:
         client = OpenAI(api_key=api_key)
         response = client.chat.completions.create(
@@ -257,7 +257,7 @@ if st.sidebar.button("Add Query"):
                 )
         else:
             answer = "Please upload documents to enable query answering."
-        
+
         st.session_state.queries.append({
             "query": query_input,
             "response": answer,
@@ -268,21 +268,20 @@ if st.sidebar.button("Add Query"):
 
 # Answer Verification
 def verify_answer(q_id, user_response, correct_response, options):
-    # Map the correct_response (e.g., "B") to the corresponding option text
     option_mapping = {"A": 0, "B": 1, "C": 2, "D": 3}
     if correct_response in option_mapping:
         correct_option_index = option_mapping[correct_response]
         correct_option_text = options[correct_option_index]
     else:
-        correct_option_text = correct_response  # Fallback in case correct_response is already the full text
+        correct_option_text = correct_response
 
     if user_response == correct_option_text:
         st.session_state.answered_questions.add(q_id)
-        st.session_state[f"correct_{q_id}"] = True  # Track correct answers
+        st.session_state[f"correct_{q_id}"] = True
         st.success("✅ Correct!")
         return True
     else:
-        st.session_state[f"correct_{q_id}"] = False  # Track incorrect answers
+        st.session_state[f"correct_{q_id}"] = False
         st.error(f"Incorrect. Correct answer: {correct_option_text}")
         return False
 
@@ -295,11 +294,8 @@ def initiate_course_creation():
 # Course Content Generation
 async def create_course_content():
     try:
-        # Debugging: Log start of the process
         st.info("Starting course generation process...")
 
-        # Group chunks by PDF filename
-        st.info("Grouping document chunks by PDF...")
         doc_chunks_by_pdf = {}
         for chunk in st.session_state.doc_chunks:
             filename = chunk['metadata']['filename']
@@ -307,32 +303,27 @@ async def create_course_content():
                 doc_chunks_by_pdf[filename] = []
             doc_chunks_by_pdf[filename].append(chunk)
 
-        # Build context and summary for each PDF
         st.info("Building context and summaries for each PDF...")
         doc_context = ""
         pdf_summaries = []
         for i, (filename, chunks) in enumerate(doc_chunks_by_pdf.items(), 1):
-            pdf_content = "\n".join(chunk['text'][:2000] for chunk in chunks)  # Limit to 2000 chars per PDF
+            pdf_content = "\n".join(chunk['text'][:2000] for chunk in chunks)
             doc_context += f"\n--- Document {i}: {filename} ---\n{pdf_content}\n"
 
-            # Generate a summary for this specific PDF
             pdf_chunks = [chunk for chunk in chunks]
             summary_query = f"Summarize the key concepts, theories, and applications from the document '{filename}'."
-            summary_chunks = pdf_chunks  # Use only chunks from this PDF
+            summary_chunks = pdf_chunks
             pdf_summary = generate_answer(summary_query, summary_chunks)
-            # Ensure pdf_summary is a string
             if not isinstance(pdf_summary, str):
                 pdf_summary = "Unable to generate summary due to unexpected response format."
             pdf_summaries.append(f"Summary of {filename}: {pdf_summary}")
 
-        # Combine summaries for the prompt
         doc_summary = "\n".join(pdf_summaries)
 
         role_context = f"Role: {selected_role}, Focus: {', '.join(selected_focus)}"
 
-        # Truncate doc_context and doc_summary to avoid exceeding API limits
-        doc_context = doc_context[:4000]  # Total limit
-        doc_summary = doc_summary[:1500]  # Total summary limit
+        doc_context = doc_context[:4000]
+        doc_summary = doc_summary[:1500]
 
         prompt = f"""
         Create a professional learning course based on multiple documents. The documents are provided below, with each document representing a separate PDF file.
@@ -359,13 +350,13 @@ async def create_course_content():
                     "title": "Module Title",
                     "source_pdf": "Filename of the PDF",
                     "learning_objectives": ["Obj1", "Obj2"],
-                    "content": "Bullet-point content",
+                    "content": ["Bullet point 1", "Bullet point 2"],
                     "quiz": {{
                         "questions": [
                             {{
                                 "question": "Text",
                                 "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
-                                "correct_answer": "Option 2"  # Use the full text of the correct option
+                                "correct_answer": "Option 2"
                             }}
                         ]
                     }}
@@ -373,11 +364,9 @@ async def create_course_content():
             ]
         }}
         """
-        
-        # Debugging: Log before API call
+
         st.info("Calling OpenAI API to generate course content...")
 
-        # Add timeout for the API call
         client = OpenAI(api_key=api_key)
         try:
             response = await asyncio.wait_for(
@@ -388,107 +377,17 @@ async def create_course_content():
                     response_format={"type": "json_object"},
                     temperature=0.7
                 ),
-                timeout=300  # 5-minute timeout
+                timeout=300
             )
         except asyncio.TimeoutError:
             raise Exception("OpenAI API call timed out after 5 minutes. Please try again or use a smaller PDF.")
 
-        # Debugging: Log after API call
         st.info("Received response from OpenAI API. Processing...")
 
-        # Validate the response structure
         if not hasattr(response, 'choices') or not response.choices:
             raise Exception("Invalid API response: 'choices' attribute missing or empty.")
 
         course_data = json.loads(response.choices[0].message.content)
-        
-        # Validate that course_data is a dictionary
+
         if not isinstance(course_data, dict):
-            raise Exception("Invalid course data format: Expected a dictionary, got: " + str(type(course_data)))
-
-        # Debug: Inspect the course_data
-        st.write("**Debug: Course Data Generated:**")
-        st.json(course_data)
-
-        # Validate required fields
-        if not course_data.get('course_title') or not course_data.get('course_description') or not course_data.get('modules'):
-            raise Exception("Course data is missing required fields (course_title, course_description, or modules).")
-
-        # Validate that each PDF has modules
-        modules = course_data.get('modules', [])
-        if not modules:
-            raise Exception("No modules found in the generated course data.")
-
-        pdfs_with_modules = set(module.get('source_pdf', '') for module in modules)
-        if len(pdfs_with_modules) != len(doc_chunks_by_pdf):
-            st.warning("The generated course did not include modules for all PDFs. Adjusting the course structure...")
-
-        # Validate module content
-        for module in modules:
-            if not module.get('title') or not module.get('source_pdf') or not module.get('learning_objectives') or not module.get('content') or not module.get('quiz'):
-                raise Exception(f"Module is missing required fields: {module}")
-            content = module.get('content', '')
-            st.write(f"Debug: Content before processing: {type(content)} {content}")
-            if isinstance(content, list):
-                # Flatten the list if it's nested
-                if all(isinstance(item, list) for item in content):
-                    content = [item for sublist in content for item in sublist]
-                content = "\n".join(str(item) for item in content)
-            elif not isinstance(content, str):
-                content = "No content provided."
-            st.write(f"Debug: Content after processing: {type(content)} {content}")
-            if not isinstance(content, str):
-                st.error(f"Content is not a string after processing: {type(content)} {content}")
-                continue
-            bullet_points = [line.strip() for line in content.split('\n') if line.strip()]
-            if len(bullet_points) < 5:
-                st.warning(f"Module '{module.get('title', 'Unknown')}' has fewer than 5 bullet points. Expected 5-8.")
-            for bp in bullet_points:
-                if len(bp.split()) < 10:
-                    st.warning(f"Bullet point in '{module.get('title', 'Unknown')}' is too short: '{bp}'. Expected 10-20 words.")
-
-        st.session_state.course_data = course_data
-        st.session_state.course_ready = True
-
-        total_questions = sum(
-            len(module.get('quiz', {}).get('questions', []))
-            for module in course_data.get('modules', [])
-        )
-        st.session_state.question_count = total_questions
-
-        st.success("✅ Course created successfully!")
-
-    except Exception as e:
-        st.error(f"Course creation failed: {str(e)}")
-        # Ensure the generating flag is reset even on error
-        st.session_state.generating = False
-        st.session_state.course_ready = False
-    finally:
-        st.session_state.generating = False
-
-# Handle Course Generation Outside Tabs to Avoid Re-rendering Issues
-if 'create_course_clicked' not in st.session_state:
-    st.session_state.create_course_clicked = False
-
-if st.session_state.doc_chunks and api_key and not st.session_state.generating and not st.session_state.course_ready:
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if st.button("🚀 Create Course", use_container_width=True):
-            st.session_state.create_course_clicked = True
-            initiate_course_creation()
-            with st.spinner("Crafting your course..."):
-                asyncio.run(create_course_content())
-            st.session_state.create_course_clicked = False
-
-# Main UI with Tabs
-tab_course, tab_queries, tab_docs = st.tabs(["📚 Course", "❓ Queries", "📑 Sources"])
-
-with tab_course:
-    if st.session_state.course_ready and st.session_state.course_data:
-        # Display the generated course
-        course = st.session_state.course_data
-        if not course.get('course_title') or not course.get('course_description') or not course.get('modules'):
-            st.error("Course data is incomplete. Please try generating the course again.")
-        else:
-            st.title(f"🌟 {course.get('course_title', 'Learning Course')}")
-            st.markdown(f"*Tailored
+            raise Exception("Invalid course data format: Expected a dictionary, got: " + str(type(course_
