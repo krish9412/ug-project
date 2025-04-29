@@ -92,7 +92,7 @@ else:
     st.info("📥 Please enter your OpenAI API key and upload PDF files to begin.")
 
 # 🎯 GPT Model and Role selection
-model_options = ["gpt-4.1-nano", "gpt-4o-mini", "gpt-4o", "gpt-4"]
+model_options = ["gpt-4o-mini", "gpt-4o", "gpt-4"]
 selected_model = st.sidebar.selectbox("Select OpenAI Model", model_options, index=0)
 
 role_options = ["Manager", "Executive", "Developer", "Designer", "Marketer", "Human Resources", "Other", "Fresher"]
@@ -242,15 +242,13 @@ def perform_course_generation():
         3. Writing a detailed course description (at least 300 words) that explains how the course synthesizes information from multiple sources
         4. Developing 5-8 comprehensive modules that build upon each other in a logical sequence
         5. Providing 4-6 clear learning objectives for each module with specific examples and practical applications
-        6. Creating detailed content for each module that includes:
-           - Organize content as digestible bullet points (at least 10-15 key points per module)
-           - Each bullet point should explain a key concept thoroughly enough to be useful
-           - Focus on practical applications and real-world examples
-           - Make sure to include information that directly helps answer the quiz questions
-           - Include step-by-step guides for complex procedures
-           - Highlight important concepts with emphasis (using markdown formatting)
-           - Ensure bullet points are comprehensive but concise
-        7. Include a quiz with 3-5 thought-provoking questions per module for assessment
+        6. Creating detailed, well-explained content for each module (at least 500 words per module) including:
+           - Real-world examples and case studies
+           - Practical applications of concepts
+           - Visual explanations where appropriate
+           - Step-by-step guides for complex procedures
+           - Comparative analysis when sources present different perspectives
+        7. Including a quiz with 3-5 thought-provoking questions per module for better understanding
         
         Return the response in the following JSON format:
         {{
@@ -260,7 +258,7 @@ def perform_course_generation():
                 {{
                     "title": "Module 1 Title",
                     "learning_objectives": ["Objective 1", "Objective 2", "Objective 3"],
-                    "content": "Module content organized as bullet points with clear explanations and examples that directly support quiz questions",
+                    "content": "Module content text with detailed explanations, examples, and practical applications",
                     "quiz": {{
                         "questions": [
                             {{
@@ -274,10 +272,9 @@ def perform_course_generation():
             ]
         }}
         
-        IMPORTANT: Format each module's content as clear bullet points with full sentences and detailed explanations.
-        Each bullet point should be comprehensive and directly help trainees answer quiz questions.
-        Make sure the quiz questions test understanding of the bullet-pointed content.
         Make the content exceptionally practical, actionable, and tailored to the professional context.
+        Provide detailed explanations, real-world examples, and practical applications in each module content.
+        Where document sources provide different perspectives or approaches to the same topic, compare and contrast them.
         """
         
         try:
@@ -379,17 +376,22 @@ with tab1:
                 st.markdown("### 📖 Module Content:")
                 module_content = module.get('content', 'No content available for this module.')
                 
-                # Format the content as bullet points if it's not already
-                # This preserves any bullet point formatting from the AI while ensuring consistency
-                content_lines = module_content.split('\n')
-                for line in content_lines:
-                    line = line.strip()
-                    if line:
-                        # Only add a bullet if the line doesn't already start with one
-                        if not line.startswith('- ') and not line.startswith('* ') and not line.startswith('• '):
-                            st.markdown(f"• {line}")
-                        else:
-                            st.markdown(line)
+                # Split the content into paragraphs and add proper formatting
+                paragraphs = module_content.split('\n\n')
+                for para in paragraphs:
+                    if para.strip().startswith('#'):
+                        # Handle markdown headers
+                        st.markdown(para)
+                    elif para.strip().startswith('*') and para.strip().endswith('*'):
+                        # Handle emphasized text
+                        st.markdown(para)
+                    elif para.strip().startswith('1.') or para.strip().startswith('- '):
+                        # Handle lists
+                        st.markdown(para)
+                    else:
+                        # Regular paragraphs
+                        st.write(para)
+                        st.write("")  # Add spacing between paragraphs
                 
                 # Key Takeaways section
                 st.markdown("### 💡 Key Takeaways:")
