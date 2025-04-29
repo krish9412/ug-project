@@ -1,7 +1,2 @@
-streamlit 
-pdfplumber 
-openai 
-sentence-transformers 
-faiss-cpu 
-reportlab 
-numpy
+source /home/adminuser/venv/bin/activate
+pip install --upgrade streamlit pdfplumber openai sentence-transformers faiss-cpu reportlab numpy transformers torch huggingface_hub
