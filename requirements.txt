@@ -1,4 +1,4 @@
---upgrade streamlit 
+streamlit 
 pdfplumber 
 openai 
 sentence-transformers 
