@@ -428,12 +428,18 @@ async def create_course_content():
             if not module.get('title') or not module.get('source_pdf') or not module.get('learning_objectives') or not module.get('content') or not module.get('quiz'):
                 raise Exception(f"Module is missing required fields: {module}")
             content = module.get('content', '')
-            # Handle both string and list formats for content
+            st.write(f"Debug: Content before processing: {type(content)} {content}")
             if isinstance(content, list):
-                content = "\n".join(str(item) for item in content)  # Convert list to string with newlines
+                # Flatten the list if it's nested
+                if all(isinstance(item, list) for item in content):
+                    content = [item for sublist in content for item in sublist]
+                content = "\n".join(str(item) for item in content)
             elif not isinstance(content, str):
-                content = "No content provided."  # Fallback for unexpected types
-            module['content'] = content  # Update the content to be a string
+                content = "No content provided."
+            st.write(f"Debug: Content after processing: {type(content)} {content}")
+            if not isinstance(content, str):
+                st.error(f"Content is not a string after processing: {type(content)} {content}")
+                continue
             bullet_points = [line.strip() for line in content.split('\n') if line.strip()]
             if len(bullet_points) < 5:
                 st.warning(f"Module '{module.get('title', 'Unknown')}' has fewer than 5 bullet points. Expected 5-8.")
@@ -485,150 +491,4 @@ with tab_course:
             st.error("Course data is incomplete. Please try generating the course again.")
         else:
             st.title(f"🌟 {course.get('course_title', 'Learning Course')}")
-            st.markdown(f"*Tailored for {selected_role}s focusing on {', '.join(selected_focus)}*")
-            st.write(course.get('course_description', ''))
-
-            completed = len(st.session_state.answered_questions)
-            total = st.session_state.question_count
-            progress = (completed / total * 100) if total > 0 else 0
-            st.progress(progress / 100)
-            st.write(f"**Progress:** {completed}/{total} questions ({progress:.1f}%)")
-
-            st.markdown("---")
-            st.subheader("📋 Course Outline")
-            modules = course.get('modules', [])
-            if not modules:
-                st.warning("No modules found in the course data.")
-            for i, module in enumerate(modules, 1):
-                source_pdf = module.get('source_pdf', 'Unknown PDF')
-                st.write(f"**Module {i}:** {module.get('title', f'Module {i}')} (Source: {source_pdf})")
-
-            st.markdown("---")
-            for i, module in enumerate(modules, 1):
-                source_pdf = module.get('source_pdf', 'Unknown PDF')
-                with st.expander(f"📚 Module {i}: {module.get('title', f'Module {i}')} (Source: {source_pdf})"):
-                    st.markdown("### 🎯 Objectives")
-                    objectives = module.get('learning_objectives', [])
-                    if not objectives:
-                        st.warning("No learning objectives defined for this module.")
-                    for obj in objectives:
-                        st.markdown(f"- {obj}")
-
-                    st.markdown("### 📖 Content")
-                    content_value = module.get('content', '')
-                    if isinstance(content_value, list):
-                        content = content_value  # Already a list of bullet points
-                    else:
-                        content = content_value.split('\n') if isinstance(content_value, str) else []
-                    if not content:
-                        st.warning("No content available for this module.")
-                    for line in content:
-                        if line.strip():
-                            st.markdown(f"• {line}" if not line.startswith(('- ', '* ', '• ')) else line)
-
-                    st.markdown("### 💡 Takeaways")
-                    st.info("Apply these skills in your professional role for immediate impact.")
-
-                    st.markdown("### 📝 Quiz")
-                    quiz_questions = module.get('quiz', {}).get('questions', [])
-                    if not quiz_questions:
-                        st.warning("No quiz questions available for this module.")
-                    for q_idx, q in enumerate(quiz_questions, 1):
-                        q_id = f"mod_{i}_q_{q_idx}"
-                        st.markdown(f"**Question {q_idx}:** {q.get('question', '')}")
-                        options = q.get('options', [])
-                        correct_response = q.get('correct_answer', '')
-                        if options:
-                            option_key = f"quiz_{i}_{q_idx}"
-                            user_answer = st.radio("Choose:", options, key=option_key)
-                            submit_key = f"submit_{i}_{q_idx}"
-                            if q_id in st.session_state.answered_questions:
-                                if st.session_state.get(f"correct_{q_id}", False):
-                                    st.success("✓ Correct!")
-                                else:
-                                    # Map the correct_response to the full text for display
-                                    option_mapping = {"A": 0, "B": 1, "C": 2, "D": 3}
-                                    correct_option_text = options[option_mapping.get(correct_response, 0)] if correct_response in option_mapping else correct_response
-                                    st.error(f"Incorrect. Correct answer: {correct_option_text}")
-                            elif st.button("Check", key=submit_key):
-                                verify_answer(q_id, user_answer, correct_response, options)
-                        st.markdown("---")
-    elif st.session_state.generating:
-        # Display loading state
-        st.title("Generating Your Course...")
-        st.info("Please wait while the course is being created. This may take a few moments.")
-    else:
-        # Display welcome screen
-        st.title("Advanced Learning Hub")
-        st.markdown("""
-        ## Elevate Your Skills with AI-Driven Learning
-
-        Upload training PDFs, and I'll craft a tailored course integrating all materials.
-
-        ### Steps:
-        1. Input your OpenAI API key
-        2. Select your role and focus areas
-        3. Upload PDFs
-        4. Generate a custom course
-
-        Start your learning journey now!
-        """)
-
-with tab_queries:
-    st.title("💬 Queries")
-    st.markdown("Submit questions to get AI-generated answers based on uploaded documents.")
-    if not st.session_state.queries:
-        st.info("No queries submitted. Use the sidebar to add one.")
-    else:
-        for i, query in enumerate(st.session_state.queries, 1):
-            with st.expander(f"Query {i}: {query['query'][:50]}..." if len(query['query']) > 50 else f"Query {i}: {query['query']}"):
-                st.write(f"**Query:** {query['query']}")
-                if query['answered']:
-                    st.write(f"**Response:** {query['response']}")
-                else:
-                    st.info("Generating response...")
-                    if st.session_state.doc_chunks:
-                        relevant_chunks = retrieve_relevant_chunks(
-                            query['query'],
-                            st.session_state.faiss_index,
-                            st.session_state.doc_embeddings,
-                            st.session_state.doc_chunks
-                        )
-                        answer = generate_answer(
-                            query['query'],
-                            relevant_chunks,
-                            st.session_state.course_data if st.session_state.course_ready else None
-                        )
-                        st.session_state.queries[i-1]['response'] = answer
-                        st.session_state.queries[i-1]['answered'] = True
-                        st.rerun()
-                    else:
-                        st.warning("Upload documents to generate responses.")
-
-with tab_docs:
-    st.title("📑 Document Sources")
-    if not st.session_state.doc_chunks:
-        st.info("No documents uploaded. Add PDFs in the sidebar.")
-    else:
-        st.write(f"**{len(st.session_state.doc_names)} documents processed:**")
-        unique_docs = set(chunk['metadata']['filename'] for chunk in st.session_state.doc_chunks)
-        for i, filename in enumerate(unique_docs, 1):
-            with st.expander(f"Document {i}: {filename}"):
-                doc_text = "\n".join(
-                    chunk['text'][:1000]
-                    for chunk in st.session_state.doc_chunks
-                    if chunk['metadata']['filename'] == filename
-                )
-                st.text_area("Preview:", value=doc_text[:1000] + "...", height=300, disabled=True)
-                if st.button(f"Summarize {filename}", key=f"sum_{i}"):
-                    with st.spinner("Summarizing..."):
-                        summary_chunks = [
-                            chunk for chunk in st.session_state.doc_chunks
-                            if chunk['metadata']['filename'] == filename
-                        ]
-                        summary = generate_answer(
-                            "Summarize this document's key concepts and applications.",
-                            summary_chunks
-                        )
-                        st.markdown("### Summary:")
-                        st.write(summary)
+            st.markdown(f"*Tailored
