@@ -1,6 +1,7 @@
 import streamlit as st
 import pdfplumber
 import json
+import io  # Added missing import for io module
 from openai import OpenAI
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -237,7 +238,7 @@ def create_training_course():
 
 # Generate Progress Report
 def generate_progress_report():
-    buffer = io.BytesIO()
+    buffer = io.BytesIO()  # Now works with io imported
     c = canvas.Canvas(buffer, pagesize=letter)
     c.drawString(100, 750, "Training Progress Report")
     c.drawString(100, 730, f"User: {user_role}")
