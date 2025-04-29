@@ -335,20 +335,20 @@ async def create_course_content():
         doc_summary = doc_summary[:1500]  # Total summary limit
 
         prompt = f"""
-        Create a professional learning course based on multiple documents. The documents are provided below, with each document representing a separate PDF file.
+        Create a professional learning course for an employee training system based on multiple documents. Each document represents a separate PDF file, provided below.
 
         Context: {role_context}
         Document Summaries: {doc_summary}
         Documents: {doc_context}
 
         Design a course by:
-        1. Analyzing each document (PDF) separately to identify its themes and insights.
+        1. Analyzing each document (PDF) separately to identify its themes, insights, and practical applications.
         2. Crafting an inspiring course title that reflects the combined focus of all documents.
-        3. Writing a 300-word course description that summarizes the overall learning objectives.
-        4. Developing exactly 2 modules for each PDF, ensuring that each module focuses exclusively on the content of its respective PDF. Do not mix content between PDFs. For {len(doc_chunks_by_pdf)} PDFs, this will result in {len(doc_chunks_by_pdf) * 2} total modules.
-        5. Defining 4-6 learning objectives per module, specific to the PDF's content.
-        6. Summarizing the module content in 5-8 concise, digestible bullet points that directly help trainees answer the quiz questions. Each bullet point must be a complete sentence (10-20 words) and a clear, focused takeaway that connects to the quiz content and the specific PDF. For example, if a quiz question is "What is a key strategy for remote team engagement?", a bullet point should be: "Regular virtual check-ins are a key strategy for remote team engagement."
-        7. Including 3-5 quiz questions per module, with each question directly related to the content of the module and the specific PDF.
+        3. Writing a 300-word course description that summarizes the overall learning objectives and their relevance to employee training.
+        4. Developing exactly 2 modules for each PDF, ensuring each module focuses exclusively on the content of its respective PDF. Do not mix content between PDFs. For {len(doc_chunks_by_pdf)} PDFs, this will result in {len(doc_chunks_by_pdf) * 2} total modules.
+        5. Defining 4-6 learning objectives per module, specific to the PDF's content and aligned with employee training goals.
+        6. Summarizing the module content in 6-10 detailed, digestible bullet points that directly help trainees answer the quiz questions. Each bullet point must be a complete sentence (15-25 words), providing a clear, focused, and practical takeaway that connects to the quiz content and the specific PDF. For example, if a quiz question is "What is a key strategy for remote team engagement?", a bullet point should be: "Regular virtual check-ins with structured agendas enhance remote team engagement by fostering communication and collaboration."
+        7. Including 3-5 quiz questions per module, with each question directly related to the module content and the specific PDF, designed to reinforce key training concepts.
 
         Return JSON:
         {{
@@ -428,18 +428,25 @@ async def create_course_content():
             if not module.get('title') or not module.get('source_pdf') or not module.get('learning_objectives') or not module.get('content') or not module.get('quiz'):
                 raise Exception(f"Module is missing required fields: {module}")
             content = module.get('content', '')
-            # Handle both string and list formats for content
+            st.write(f"Debug: Content before processing: {type(content)} {content}")
             if isinstance(content, list):
-                content = "\n".join(str(item) for item in content)  # Convert list to string with newlines
+                # Flatten the list if it's nested
+                if any(isinstance(item, list) for item in content):
+                    content = [item for sublist in content for item in (sublist if isinstance(sublist, list) else [sublist])]
+                content = "\n".join(str(item) for item in content)
             elif not isinstance(content, str):
-                content = "No content provided."  # Fallback for unexpected types
-            module['content'] = content  # Update the content to be a string
+                content = "No content provided."
+            st.write(f"Debug: Content after processing: {type(content)} {content}")
+            if not isinstance(content, str):
+                st.error(f"Content is not a string after processing: {type(content)} {content}")
+                continue
             bullet_points = [line.strip() for line in content.split('\n') if line.strip()]
-            if len(bullet_points) < 5:
-                st.warning(f"Module '{module.get('title', 'Unknown')}' has fewer than 5 bullet points. Expected 5-8.")
+            if len(bullet_points) < 6:
+                st.warning(f"Module '{module.get('title', 'Unknown')}' has fewer than 6 bullet points. Expected 6-10.")
             for bp in bullet_points:
-                if len(bp.split()) < 10:
-                    st.warning(f"Bullet point in '{module.get('title', 'Unknown')}' is too short: '{bp}'. Expected 10-20 words.")
+                word_count = len(bp.split())
+                if word_count < 15 or word_count > 25:
+                    st.warning(f"Bullet point in '{module.get('title', 'Unknown')}' has {word_count} words: '{bp}'. Expected 15-25 words.")
 
         st.session_state.course_data = course_data
         st.session_state.course_ready = True
@@ -581,54 +588,4 @@ with tab_queries:
         st.info("No queries submitted. Use the sidebar to add one.")
     else:
         for i, query in enumerate(st.session_state.queries, 1):
-            with st.expander(f"Query {i}: {query['query'][:50]}..." if len(query['query']) > 50 else f"Query {i}: {query['query']}"):
-                st.write(f"**Query:** {query['query']}")
-                if query['answered']:
-                    st.write(f"**Response:** {query['response']}")
-                else:
-                    st.info("Generating response...")
-                    if st.session_state.doc_chunks:
-                        relevant_chunks = retrieve_relevant_chunks(
-                            query['query'],
-                            st.session_state.faiss_index,
-                            st.session_state.doc_embeddings,
-                            st.session_state.doc_chunks
-                        )
-                        answer = generate_answer(
-                            query['query'],
-                            relevant_chunks,
-                            st.session_state.course_data if st.session_state.course_ready else None
-                        )
-                        st.session_state.queries[i-1]['response'] = answer
-                        st.session_state.queries[i-1]['answered'] = True
-                        st.rerun()
-                    else:
-                        st.warning("Upload documents to generate responses.")
-
-with tab_docs:
-    st.title("📑 Document Sources")
-    if not st.session_state.doc_chunks:
-        st.info("No documents uploaded. Add PDFs in the sidebar.")
-    else:
-        st.write(f"**{len(st.session_state.doc_names)} documents processed:**")
-        unique_docs = set(chunk['metadata']['filename'] for chunk in st.session_state.doc_chunks)
-        for i, filename in enumerate(unique_docs, 1):
-            with st.expander(f"Document {i}: {filename}"):
-                doc_text = "\n".join(
-                    chunk['text'][:1000]
-                    for chunk in st.session_state.doc_chunks
-                    if chunk['metadata']['filename'] == filename
-                )
-                st.text_area("Preview:", value=doc_text[:1000] + "...", height=300, disabled=True)
-                if st.button(f"Summarize {filename}", key=f"sum_{i}"):
-                    with st.spinner("Summarizing..."):
-                        summary_chunks = [
-                            chunk for chunk in st.session_state.doc_chunks
-                            if chunk['metadata']['filename'] == filename
-                        ]
-                        summary = generate_answer(
-                            "Summarize this document's key concepts and applications.",
-                            summary_chunks
-                        )
-                        st.markdown("### Summary:")
-                        st.write(summary)
+            with st.expander(f"Query {i}: {query['query'][:50]}..." if len(query['query']) > 50 else
