@@ -10,12 +10,12 @@ import requests
 from typing import List, Dict, Any
 from collections import defaultdict
 import re
-from langchain.vectorstores import Chroma  # For langchain==0.0.348; for newer versions, use: from langchain_community.vectorstores import Chroma
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import Chroma
+from langchain_openai import OpenAIEmbeddings
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from langchain.llms import OpenAI
-from langchain.docstore.document import Document
+from langchain_openai import OpenAI
+from langchain_core.documents import Document
 
 # Page Configuration
 st.set_page_config(page_title="📖 Advanced Learning Hub", layout="wide")
@@ -196,8 +196,8 @@ def generate_answer(query: str, vector_store: Chroma, api_key: str) -> str:
 
     # Set up LangChain RetrievalQA
     llm = OpenAI(
-        openai_api_key=api_key,
-        model_name=selected_model,
+        api_key=api_key,
+        model=selected_model,
         temperature=0.5
     )
     retriever = vector_store.as_retriever(search_kwargs={"k": 3})
@@ -303,8 +303,8 @@ def create_course_content(vector_store: Chroma, api_key: str) -> Dict[str, Any]:
 
     # Use LangChain to generate course content
     llm = OpenAI(
-        openai_api_key=api_key,
-        model_name=selected_model,
+        api_key=api_key,
+        model=selected_model,
         temperature=0.7
     )
     prompt_template = PromptTemplate(
