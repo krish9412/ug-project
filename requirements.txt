@@ -1,10 +1,4 @@
 streamlit 
 pdfplumber 
 openai 
-sentence-transformers 
-faiss-cpu 
-reportlab 
-numpy 
-transformers 
-torch 
-huggingface_hub
+reportlab
