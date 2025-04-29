@@ -390,4 +390,14 @@ async def create_course_content():
         course_data = json.loads(response.choices[0].message.content)
 
         if not isinstance(course_data, dict):
-            raise Exception("Invalid course data format: Expected a dictionary, got: " + str(type(course_
+            raise Exception("Invalid course data format: Expected a dictionary, got: " + str(type(course_data)))
+
+        # Debug: Inspect the course_data
+        st.write("**Debug: Course Data Generated:**")
+        st.json(course_data)
+
+        # Validate required fields
+        if not course_data.get('course_title') or not course_data.get('course_description') or not course_data.get('modules'):
+            raise Exception("Course data is missing required fields (course_title, course_description, or modules).")
+
+        # Validate
